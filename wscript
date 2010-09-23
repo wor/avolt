@@ -15,14 +15,12 @@ def set_options(opt):
 
 def configure(conf):
         import Options
-        print('→ the value of use-gcc is %r' % Options.options.use_gcc)
-        print('→ configuring the project')
 
         conf.check_tool('compiler_cc')
 
-        # enable clang if found
+        # enable clang if found and if not --use-gcc option given
         conf.find_program('clang', var='CLANG_PATH', mandatory=False)
-        if conf.env.CLANG_PATH:
+        if conf.env.CLANG_PATH and not Options.options.use_gcc:
             conf.env.CC = conf.env.CLANG_PATH
             conf.env.LINK_CC = conf.env.CLANG_PATH
             conf.env.CC_NAME = 'clang'
@@ -35,24 +33,17 @@ def configure(conf):
         conf.env.CCDEFINES_MAIN = ['MAIN']
         conf.env.CCFLAGS_MAIN   = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
         conf.env.LIBPATH_MAIN   = ['/usr/lib']
-        #print(conf.env)
 
 
 def build(bld):
         t = bld(
                 features     = ['cc', 'cprogram'],
-                #source       = 'avolt.c',
                 source       = bld.path.ant_glob('*.c'),
                 install_path = '${SOME_PATH}/bin',
                 target       = APPNAME,
                 vnum         = VERSION,
                 includes     = ['.'],
-                #defines      = ['LINUX=1', 'BIDULE'],
-                #ccflags      = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99'],
-                userlib      = ['/usr/include/alsa'],
                 libpath      = ['/usr/lib'],
-                #lib          = ['asound'],
-                #linkflags    = ['-g'],
                 uselib      = 'MAIN'
         )
         t.rpath          = ['/usr/lib']
