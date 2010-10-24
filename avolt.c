@@ -150,7 +150,7 @@ int main(int argc, char* argv[])
     // default action
     // get % volumes
     long int percent_vol = get_vol(elem);
-    printf("Master volume percent %li\n", percent_vol);
+    printf("%li\n", percent_vol);
 
     return 0;
 }
