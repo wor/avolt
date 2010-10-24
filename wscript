@@ -8,7 +8,7 @@ top = '.'
 out = '/tmp/avolt_build'
 
 
-def set_options(opt):
+def options(opt):
         opt.add_option('--use-gcc', action='store_true', default=False, help='Prefer gcc as compiler.')
         opt.tool_options('compiler_cc')
 
