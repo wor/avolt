@@ -7,19 +7,24 @@
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o volget
  */
 
+// TODO: check alsamixer source code for volume changing and see if it differs
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
 #include <strings.h>
+#include <unistd.h> /* access */
 
 #define VERSION "0.0.1"
+#define LOCK_FILE "/tmp/.avolt.lock"
 
 
-snd_mixer_t* get_handle();
+snd_mixer_t* get_handle(void);
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle);
 long int get_vol(snd_mixer_elem_t* elem);
 void set_vol(snd_mixer_elem_t* elem, long int new_vol);
 void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
+int check_lock_file(void);
+void delete_lock_file(void);
 
 /* get alsa handle */
 snd_mixer_t* get_handle() {
@@ -104,6 +109,23 @@ void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_
 }
 
 
+// TODO: transform lock to to named pipe (FIFO)?
+int check_lock_file(void) {
+    if(access(LOCK_FILE, F_OK) == 0) {
+        return 0;
+    } else {
+        fclose(fopen(LOCK_FILE, "w"));
+        return -1;
+    }
+}
+
+
+void delete_lock_file(void) {
+    remove(LOCK_FILE);
+    return;
+}
+
+
 /*****************
  * MAIN function */
 int main(int argc, char* argv[])
@@ -129,7 +151,11 @@ int main(int argc, char* argv[])
     snd_mixer_elem_t* elem = get_elem(handle);
 
     if (!toggle && new_vol != -1) {
+        if (check_lock_file() == 0) {
+            return 0;
+        }
         set_vol(elem, new_vol);
+        delete_lock_file();
         return 0;
     }
 
