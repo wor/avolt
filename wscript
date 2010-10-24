@@ -37,7 +37,7 @@ def configure(conf):
 
 def build(bld):
         t = bld(
-                features     = ['cc', 'cprogram'],
+                features     = ['c', 'cprogram'],
                 source       = bld.path.ant_glob('*.c'),
                 install_path = '${SOME_PATH}/bin',
                 target       = APPNAME,
