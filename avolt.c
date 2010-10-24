@@ -14,8 +14,10 @@
 #include <strings.h>
 #include <unistd.h> /* access */
 
-#define VERSION "0.0.1"
+#define VERSION "0.2"
+#define DEFAULT_VOL 32
 #define LOCK_FILE "/tmp/.avolt.lock"
+#define ERROR_VOL 99999
 
 
 snd_mixer_t* get_handle(void);
@@ -25,6 +27,7 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol);
 void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
 int check_lock_file(void);
 void delete_lock_file(void);
+void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
 
 /* get alsa handle */
 snd_mixer_t* get_handle() {
@@ -78,13 +81,26 @@ long int get_vol(snd_mixer_elem_t* elem) {
 /* set volume as in range 0-100 */
 void set_vol(snd_mixer_elem_t* elem, long int new_vol) {
     long int min, max;
+
+    /* check input range */
+    if (new_vol < 0) {
+        new_vol = 0;
+    } else if (new_vol > 100) {
+        fprintf(stderr, "avolt ERROR: max volume exceeded > 100: %li\n", new_vol);
+        return;
+    }
+
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
     change_range(&new_vol, 0, 100, min, max);
 
     // check that new volume really in the right range
     {
         long int min, max;
-        snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+        int err = -1;
+        err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+        if (err < 0) {
+            return;
+        }
         if (new_vol > max || new_vol < min) {
             assert(0);
             return;
@@ -109,7 +125,7 @@ void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_
 }
 
 
-// TODO: transform lock to to named pipe (FIFO)?
+/* checks if lock file exists and exits if it does */
 int check_lock_file(void) {
     if(access(LOCK_FILE, F_OK) == 0) {
         return 0;
@@ -120,9 +136,18 @@ int check_lock_file(void) {
 }
 
 
+/* deletes lock file */
 void delete_lock_file(void) {
     remove(LOCK_FILE);
     return;
+}
+
+
+/* sets volume relative to current volume, increases or decreases volume */
+void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change) {
+    long int current_vol = get_vol(elem);
+    long int new_vol = current_vol + vol_change;
+    set_vol(elem, new_vol);
 }
 
 
@@ -130,18 +155,27 @@ void delete_lock_file(void) {
  * MAIN function */
 int main(int argc, char* argv[])
 {
-    const int default_toggle_vol = 32;
-    int new_vol = -1; // set volume to this
+    const int default_toggle_vol = DEFAULT_VOL;
+    int new_vol = ERROR_VOL; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
+    int inc = 0; // do we increase volume
 
-    // read parameters
+    /* read parameters */
     for (int i = 1; i < argc; i++) {
-        if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc))
-            new_vol = atoi(argv[++i]);
-        else if (strcmp(argv[i], "-t") == 0)
+        if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
+            if (strncmp(argv[i+1], "+", 1) == 0) {
+                inc = 1;
+                new_vol = atoi(argv[i+1]+1);
+            } else if (strncmp(argv[i+1], "-", 1) == 0) {
+                new_vol = atoi(argv[i+1]+1)*-1;
+            } else {
+                new_vol = atoi(argv[i+1]);
+            }
+            i++;
+        } else if (strcmp(argv[i], "-t") == 0) {
             toggle = 1;
-        else {
-            fprintf(stderr, "avolt - " VERSION ": %s [-s <volume>] [-t]\n",
+        } else {
+            fprintf(stderr, "avolt - v" VERSION ": %s [-s [+|-]<volume>] [-t]\n",
                     argv[0]);
             return 1;
         }
@@ -150,16 +184,25 @@ int main(int argc, char* argv[])
     snd_mixer_t* handle = get_handle();
     snd_mixer_elem_t* elem = get_elem(handle);
 
-    if (!toggle && new_vol != -1) {
+    /* block which changes absolut and relative volumes */
+    if (!toggle && new_vol != ERROR_VOL) {
         if (check_lock_file() == 0) {
             return 0;
         }
-        set_vol(elem, new_vol);
+        /* check if relative volume */
+        if (inc != 0 || new_vol < 0) {
+            if (new_vol == 0) {
+                return 0;
+            }
+            set_vol_relative(elem, new_vol);
+        } else {
+            set_vol(elem, new_vol);
+        }
         delete_lock_file();
         return 0;
     }
 
-    // toggle volume
+    /* volume toggler between 0<-->default_toggle_vol */
     if (toggle) {
         if (get_vol(elem) == 0) {
             if (new_vol > 0)
@@ -173,8 +216,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // default action
-    // get % volumes
+    /* default action: get % volumes */
     long int percent_vol = get_vol(elem);
     printf("%li\n", percent_vol);
 
