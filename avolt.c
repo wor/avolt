@@ -18,12 +18,13 @@
 #define DEFAULT_VOL 32
 #define LOCK_FILE "/tmp/.avolt.lock"
 #define ERROR_VOL 99999
-
+#define TRUE 0
+#define FALSE -1
 
 snd_mixer_t* get_handle(void);
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle);
 long int get_vol(snd_mixer_elem_t* elem);
-void set_vol(snd_mixer_elem_t* elem, long int new_vol);
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
 void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
 int check_lock_file(void);
 void delete_lock_file(void);
@@ -63,6 +64,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle) {
 }
 
 
+/* gets mixer volume without range chaning */
 long int get_vol(snd_mixer_elem_t* elem) {
     long int a, b;
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
@@ -70,45 +72,43 @@ long int get_vol(snd_mixer_elem_t* elem) {
 
     long int louder_channel_vol = a >= b ? a : b;
 
-    long int min, max;
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-    change_range(&louder_channel_vol, min, max, 0, 100);
-
     return louder_channel_vol;
 }
 
 
 /* set volume as in range 0-100 */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol) {
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range) {
+    int err = 0;
     long int min, max;
 
     /* check input range */
-    if (new_vol < 0) {
-        new_vol = 0;
-    } else if (new_vol > 100) {
-        fprintf(stderr, "avolt ERROR: max volume exceeded > 100: %li\n", new_vol);
-        return;
-    }
-
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-    change_range(&new_vol, 0, 100, min, max);
-
-    // check that new volume really in the right range
-    {
-        long int min, max;
-        int err = -1;
+    if (change_range == TRUE) {
+        if (new_vol < 0) {
+            new_vol = 0;
+        } else if (new_vol > 100) {
+            fprintf(stderr, "avolt ERROR: max volume exceeded > 100: %li\n", new_vol);
+            return;
+        }
+    } else {
         err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
         if (err < 0) {
             return;
         }
         if (new_vol > max || new_vol < min) {
-            assert(0);
+            fprintf(stderr, "avolt ERROR: new volume (%li) was not in range: %li <--> %li\n", new_vol, min, max);
             return;
         }
     }
 
-    snd_mixer_selem_set_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, new_vol);
-    snd_mixer_selem_set_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, new_vol);
+    if (change_range == TRUE) {
+        snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+        new_vol = min + (max - min) * new_vol / 100;
+    }
+    err = snd_mixer_selem_set_playback_volume_all(elem, new_vol);
+    if (err != 0) {
+        fprintf(stderr, "avolt ERROR: snd mixer set playback volume failed.\n");
+        return;
+    }
 }
 
 
@@ -121,7 +121,8 @@ void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_
     float mul = (float)(r_t_max - r_t_min)/(float)(r_f_max - r_f_min);
 
     // multiply and shift to new range
-    *num = (*num * mul) + r_t_min;
+    float f = ((float)*num * mul) + r_t_min;
+    *num = (int)f;
 }
 
 
@@ -143,14 +144,6 @@ void delete_lock_file(void) {
 }
 
 
-/* sets volume relative to current volume, increases or decreases volume */
-void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change) {
-    long int current_vol = get_vol(elem);
-    long int new_vol = current_vol + vol_change;
-    set_vol(elem, new_vol);
-}
-
-
 /*****************
  * MAIN function */
 int main(int argc, char* argv[])
@@ -159,6 +152,7 @@ int main(int argc, char* argv[])
     int new_vol = ERROR_VOL; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
     int inc = 0; // do we increase volume
+    long int min, max;
 
     /* read parameters */
     for (int i = 1; i < argc; i++) {
@@ -194,9 +188,9 @@ int main(int argc, char* argv[])
             if (new_vol == 0) {
                 return 0;
             }
-            set_vol_relative(elem, new_vol);
+            set_vol(elem, get_vol(elem) + new_vol, FALSE);
         } else {
-            set_vol(elem, new_vol);
+            set_vol(elem, new_vol, TRUE);
         }
         delete_lock_file();
         return 0;
@@ -206,18 +200,20 @@ int main(int argc, char* argv[])
     if (toggle) {
         if (get_vol(elem) == 0) {
             if (new_vol > 0)
-                set_vol(elem, new_vol);
+                set_vol(elem, new_vol, TRUE);
             else
-                set_vol(elem, default_toggle_vol);
+                set_vol(elem, default_toggle_vol, TRUE);
         }
         else {
-            set_vol(elem, 0);
+            set_vol(elem, 0, FALSE);
         }
         return 0;
     }
 
     /* default action: get % volumes */
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
     long int percent_vol = get_vol(elem);
+    change_range(&percent_vol, min, max, 0, 100);
     printf("%li\n", percent_vol);
 
     return 0;
