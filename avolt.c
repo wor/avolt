@@ -13,21 +13,23 @@
 #include <strings.h>
 #include <unistd.h> /* access */
 
-#define VERSION "0.2"
+#define VERSION "0.2.1"
 #define DEFAULT_VOL 32
 #define LOCK_FILE "/tmp/.avolt.lock"
+
 #define ERROR_VOL 99999
 #define TRUE 0
 #define FALSE -1
 
-snd_mixer_t* get_handle(void);
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle);
-long int get_vol(snd_mixer_elem_t* elem);
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
-void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
 int check_lock_file(void);
+long int get_vol(snd_mixer_elem_t* elem);
+snd_mixer_elem_t* get_elem(snd_mixer_t* handle);
+snd_mixer_t* get_handle(void);
+void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
 void delete_lock_file(void);
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
 void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
+void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
 
 /* get alsa handle */
 snd_mixer_t* get_handle() {
@@ -111,7 +113,8 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range) {
 }
 
 
-/* set changes int range, from range -> to range */
+/* set changes int range, from range -> to range
+ * TODO: if change is made to smaller range, round to resolution borders */
 void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max) {
     // shift
     *num = *num - r_f_min;
@@ -136,6 +139,21 @@ int check_lock_file(void) {
 }
 
 
+/* volume toggler between 0 <--> DEFAULT_VOL */
+void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min) {
+    if (get_vol(elem) == min) {
+        if (new_vol > 0 && new_vol != ERROR_VOL)
+            set_vol(elem, new_vol, TRUE);
+        else
+            set_vol(elem, DEFAULT_VOL, TRUE);
+    }
+    else {
+        set_vol(elem, 0, TRUE);
+    }
+    return;
+}
+
+
 /* deletes lock file */
 void delete_lock_file(void) {
     remove(LOCK_FILE);
@@ -147,7 +165,6 @@ void delete_lock_file(void) {
  * MAIN function */
 int main(int argc, char* argv[])
 {
-    const int default_toggle_vol = DEFAULT_VOL;
     int new_vol = ERROR_VOL; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
     int inc = 0; // do we increase volume
@@ -176,37 +193,28 @@ int main(int argc, char* argv[])
 
     snd_mixer_t* handle = get_handle();
     snd_mixer_elem_t* elem = get_elem(handle);
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
-    /* block which changes absolut and relative volumes */
-    if (!toggle && new_vol != ERROR_VOL) {
+    if (new_vol != ERROR_VOL || toggle) {
         if (check_lock_file() == 0) {
             return 0;
         }
-        /* check if relative volume */
-        if (inc != 0 || new_vol < 0) {
-            if (new_vol == 0) {
-                return 0;
-            }
-            set_vol(elem, get_vol(elem) + new_vol, FALSE);
-        } else {
-            set_vol(elem, new_vol, TRUE);
-        }
-        delete_lock_file();
-        return 0;
-    }
 
-    /* volume toggler between 0<-->default_toggle_vol */
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-    if (toggle) {
-        if (get_vol(elem) == min) {
-            if (new_vol > 0 && new_vol != ERROR_VOL)
+        if (toggle) {
+            toggle_volume(elem, new_vol, min);
+        } else {
+            /* change absolut and relative volumes */
+            /* first check if relative volume */
+            if (inc != 0 || new_vol < 0) {
+                if (new_vol != 0) {
+                    set_vol(elem, get_vol(elem) + new_vol, FALSE);
+                }
+            } else {
                 set_vol(elem, new_vol, TRUE);
-            else
-                set_vol(elem, default_toggle_vol, TRUE);
+            }
         }
-        else {
-            set_vol(elem, 0, TRUE);
-        }
+
+        delete_lock_file();
         return 0;
     }
 
