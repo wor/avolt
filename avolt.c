@@ -7,7 +7,6 @@
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o volget
  */
 
-// TODO: check alsamixer source code for volume changing and see if it differs
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
@@ -76,7 +75,7 @@ long int get_vol(snd_mixer_elem_t* elem) {
 }
 
 
-/* set volume as in range 0-100 */
+/* set volume as in range 0-100 or native range if change_range is FALSE */
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range) {
     int err = 0;
     long int min, max;
