@@ -196,21 +196,21 @@ int main(int argc, char* argv[])
     }
 
     /* volume toggler between 0<-->default_toggle_vol */
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
     if (toggle) {
-        if (get_vol(elem) == 0) {
-            if (new_vol > 0)
+        if (get_vol(elem) == min) {
+            if (new_vol > 0 && new_vol != ERROR_VOL)
                 set_vol(elem, new_vol, TRUE);
             else
                 set_vol(elem, default_toggle_vol, TRUE);
         }
         else {
-            set_vol(elem, 0, FALSE);
+            set_vol(elem, 0, TRUE);
         }
         return 0;
     }
 
     /* default action: get % volumes */
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
     long int percent_vol = get_vol(elem);
     change_range(&percent_vol, min, max, 0, 100);
     printf("%li\n", percent_vol);
