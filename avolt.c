@@ -15,6 +15,7 @@
 
 #define VERSION "0.2.1"
 #define DEFAULT_VOL 32
+//#define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
 
 #define ERROR_VOL 99999
@@ -196,9 +197,11 @@ int main(int argc, char* argv[])
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
     if (new_vol != ERROR_VOL || toggle) {
+#ifdef USE_LOCK_FILE
         if (check_lock_file() == 0) {
             return 0;
         }
+#endif
 
         if (toggle) {
             toggle_volume(elem, new_vol, min);
@@ -214,7 +217,9 @@ int main(int argc, char* argv[])
             }
         }
 
+#ifdef USE_LOCK_FILE
         delete_lock_file();
+#endif
         return 0;
     }
 
