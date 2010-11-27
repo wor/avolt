@@ -13,6 +13,7 @@
 #include <strings.h>
 #include <unistd.h> /* access */
 #include <limits.h>
+#include <stdbool.h>
 
 #define VERSION "0.2.2"
 #define DEFAULT_VOL 32
@@ -31,7 +32,7 @@ void delete_lock_file(void);
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
 void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
 void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
-void get_vol_from_arg(const char* arg, int* new_vol, int* inc);
+void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 
 /* get alsa handle */
 snd_mixer_t* get_handle() {
@@ -164,9 +165,9 @@ void delete_lock_file(void) {
 
 
 /* gets volume from char* string */
-void get_vol_from_arg(const char* arg, int* new_vol, int* inc) {
+void get_vol_from_arg(const char* arg, int* new_vol, bool* inc) {
     if (strncmp(arg, "+", 1) == 0) {
-        *inc = 1;
+        *inc = true;
         *new_vol = atoi(arg+1);
     } else if (strncmp(arg, "-", 1) == 0) {
         *new_vol = atoi(arg+1)*-1;
@@ -182,7 +183,7 @@ int main(int argc, char* argv[])
 {
     int new_vol = INT_MAX; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
-    int inc = 0; // do we increase volume
+    bool inc = false; // do we increase volume
     long int min, max;
 
     /* read parameters */
@@ -218,7 +219,7 @@ int main(int argc, char* argv[])
         } else {
             /* change absolut and relative volumes */
             /* first check if relative volume */
-            if (inc != 0 || new_vol < 0) {
+            if (inc || new_vol < 0) {
                 if (new_vol != 0) {
                     set_vol(elem, get_vol(elem) + new_vol, FALSE);
                 }
