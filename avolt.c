@@ -12,13 +12,13 @@
 #include <stdio.h>
 #include <strings.h>
 #include <unistd.h> /* access */
+#include <limits.h>
 
-#define VERSION "0.2.1"
+#define VERSION "0.2.2"
 #define DEFAULT_VOL 32
 //#define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
 
-#define ERROR_VOL 99999
 #define TRUE 0
 #define FALSE -1
 
@@ -31,6 +31,7 @@ void delete_lock_file(void);
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
 void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
 void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
+void get_vol_from_arg(const char* arg, int* new_vol, int* inc);
 
 /* get alsa handle */
 snd_mixer_t* get_handle() {
@@ -143,7 +144,7 @@ int check_lock_file(void) {
 /* volume toggler between 0 <--> DEFAULT_VOL */
 void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min) {
     if (get_vol(elem) == min) {
-        if (new_vol > 0 && new_vol != ERROR_VOL)
+        if (new_vol > 0 && new_vol != INT_MAX)
             set_vol(elem, new_vol, TRUE);
         else
             set_vol(elem, DEFAULT_VOL, TRUE);
@@ -162,11 +163,24 @@ void delete_lock_file(void) {
 }
 
 
+/* gets volume from char* string */
+void get_vol_from_arg(const char* arg, int* new_vol, int* inc) {
+    if (strncmp(arg, "+", 1) == 0) {
+        *inc = 1;
+        *new_vol = atoi(arg+1);
+    } else if (strncmp(arg, "-", 1) == 0) {
+        *new_vol = atoi(arg+1)*-1;
+    } else {
+        *new_vol = atoi(arg);
+    }
+}
+
+
 /*****************
  * MAIN function */
 int main(int argc, char* argv[])
 {
-    int new_vol = ERROR_VOL; // set volume to this
+    int new_vol = INT_MAX; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
     int inc = 0; // do we increase volume
     long int min, max;
@@ -174,21 +188,17 @@ int main(int argc, char* argv[])
     /* read parameters */
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
-            if (strncmp(argv[i+1], "+", 1) == 0) {
-                inc = 1;
-                new_vol = atoi(argv[i+1]+1);
-            } else if (strncmp(argv[i+1], "-", 1) == 0) {
-                new_vol = atoi(argv[i+1]+1)*-1;
-            } else {
-                new_vol = atoi(argv[i+1]);
-            }
-            i++;
+            get_vol_from_arg(argv[++i], &new_vol, &inc);
         } else if (strcmp(argv[i], "-t") == 0) {
             toggle = 1;
         } else {
-            fprintf(stderr, "avolt - v" VERSION ": %s [-s [+|-]<volume>] [-t]\n",
-                    argv[0]);
-            return 1;
+            get_vol_from_arg(argv[i], &new_vol, &inc);
+            if (strcmp(argv[i], "0") != 0 &&
+                    !(new_vol != 0 && new_vol != INT_MAX && new_vol != INT_MIN)) {
+                fprintf(stderr, "avolt - v" VERSION ": %s [-s [+|-]<volume>] [-t]\n",
+                        argv[0]);
+                return 1;
+            }
         }
     }
 
@@ -196,7 +206,7 @@ int main(int argc, char* argv[])
     snd_mixer_elem_t* elem = get_elem(handle);
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
-    if (new_vol != ERROR_VOL || toggle) {
+    if (new_vol != INT_MAX || toggle) {
 #ifdef USE_LOCK_FILE
         if (check_lock_file() == 0) {
             return 0;
