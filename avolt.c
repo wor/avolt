@@ -41,7 +41,8 @@ void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 
 /* get alsa handle */
-snd_mixer_t* get_handle() {
+snd_mixer_t* get_handle()
+{
     snd_mixer_t* handle = NULL;
 
     int ret_val = snd_mixer_open(&handle, 0);
@@ -56,7 +57,8 @@ snd_mixer_t* get_handle() {
 
 
 /* get mixer elem with given name from the handle */
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
+snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
+{
     snd_mixer_elem_t* elem = NULL;
 
     /* get snd_mixer_elem_t pointer, corresponding Master */
@@ -75,7 +77,8 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
 
 
 /* gets mixer volume without changing range */
-void get_vol(snd_mixer_elem_t* elem, long int* vol) {
+inline void get_vol(snd_mixer_elem_t* elem, long int* vol)
+{
     long int a, b;
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, &b);
@@ -85,7 +88,7 @@ void get_vol(snd_mixer_elem_t* elem, long int* vol) {
 
 
 /* get volume in 0 - 100 range */
-void get_vol_0_100(
+inline void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
         long int const* const max,
@@ -97,7 +100,8 @@ void get_vol_0_100(
 
 
 /* set volume as in range 0-100 or native range if change_range is FALSE */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range) {
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range)
+{
     int err = 0;
     long int min, max;
 
@@ -139,8 +143,8 @@ void change_range(
         int const r_f_min,
         int const r_f_max,
         int const r_t_min,
-        int const r_t_max) {
-
+        int const r_t_max)
+{
     // shift
     *num = *num - r_f_min;
 
@@ -154,7 +158,8 @@ void change_range(
 
 
 /* checks if lock file exists and exits if it does */
-int check_lock_file(void) {
+inline int check_lock_file(void)
+{
     if(access(LOCK_FILE, F_OK) == 0) {
         return 0;
     } else {
@@ -165,7 +170,8 @@ int check_lock_file(void) {
 
 
 /* volume toggler between 0 <--> DEFAULT_VOL */
-void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min) {
+void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min)
+{
     long int current_vol;
     get_vol(elem, &current_vol);
     if (current_vol == min) {
@@ -182,14 +188,16 @@ void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min) {
 
 
 /* deletes lock file */
-void delete_lock_file(void) {
+inline void delete_lock_file(void)
+{
     remove(LOCK_FILE);
     return;
 }
 
 
 /* gets volume from char* string */
-void get_vol_from_arg(const char* arg, int* new_vol, bool* inc) {
+void get_vol_from_arg(const char* arg, int* new_vol, bool* inc) 
+{
     if (strncmp(arg, "+", 1) == 0) {
         *inc = true;
         *new_vol = atoi(arg+1);
