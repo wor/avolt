@@ -1,4 +1,4 @@
-/* © 2010 Esa S. Määttä <esa maatta at iki fi>
+/* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
 /* Simple program to set/get/toggle alsa Master volume */
@@ -7,6 +7,7 @@
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o volget
  */
 
+/* TODO: check const correctness */
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
@@ -22,11 +23,13 @@
 /* When toggling front panel off, set volume to default if no new volume given.
  * */
 const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
+
+/* Use lock file to prevent concurrent calls. */
 const bool USE_LOCK_FILE = true;
 
-int check_lock_file(void);
-void get_vol(snd_mixer_elem_t* elem, long int* vol);
-void get_vol_0_100(
+/* Function declarations. */
+inline void get_vol(snd_mixer_elem_t* elem, long int* vol);
+inline void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
         long int const* const max,
@@ -39,13 +42,15 @@ void change_range(
         int const r_f_max,
         int const r_t_min,
         int const r_t_max);
-void delete_lock_file(void);
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range);
 void toggle_volume(
         snd_mixer_elem_t* elem,
         long int const new_vol,
         long int const min);
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
+inline void delete_lock_file(void);
+inline int check_lock_file(void);
+
 
 /* get alsa handle */
 snd_mixer_t* get_handle()
@@ -219,8 +224,9 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 }
 
 
-/*****************
- * MAIN function */
+/*****************************************************************************
+ * Main function
+ * */
 int main(const int argc, const char* argv[])
 {
     const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf]"
