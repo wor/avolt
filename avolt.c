@@ -15,7 +15,7 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define VERSION "0.2.3"
+#define VERSION "0.2.4"
 #define DEFAULT_VOL 32
 #define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
@@ -31,9 +31,8 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
 snd_mixer_t* get_handle(void);
 void change_range(long int* num, int const r_f_min, int const r_f_max, int const r_t_min, int const r_t_max);
 void delete_lock_file(void);
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool change_range);
-void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
-void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range);
+void toggle_volume(snd_mixer_elem_t* elem, long int const new_vol, long int const min);
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 
 /* get alsa handle */
@@ -96,7 +95,7 @@ inline void get_vol_0_100(
 
 
 /* set volume as in range 0-100 or native range if change_range is false */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool change_range)
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
 {
     int err = 0;
     long int min, max;
@@ -166,7 +165,10 @@ inline int check_lock_file(void)
 
 
 /* volume toggler between 0 <--> DEFAULT_VOL */
-void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min)
+void toggle_volume(
+        snd_mixer_elem_t* elem,
+        long int const new_vol,
+        long int const min)
 {
     long int current_vol;
     get_vol(elem, &current_vol);
@@ -209,9 +211,10 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
  * MAIN function */
 int main(const int argc, const char* argv[])
 {
-    const char* input_help = "[[+|-]<volume>]|[-s [+|-]<volume>]] [-t] [-tf]"
+    const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf]"
         "\n\n"
         "Option help:\n"
+        "s:\tSet volume.\n"
         "t:\tToggle volume.\n"
         "tf:\tToggle front panel.\n";
     int new_vol = INT_MAX; // Set volume to this
