@@ -20,10 +20,6 @@
 #define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
 
-/* TODO: cleanup: use bool */
-#define TRUE 0
-#define FALSE -1
-
 /* When toggling front panel off, set volume to default if no new volume given.
  * */
 const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
@@ -35,7 +31,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
 snd_mixer_t* get_handle(void);
 void change_range(long int* num, int const r_f_min, int const r_f_max, int const r_t_min, int const r_t_max);
 void delete_lock_file(void);
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool change_range);
 void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
 void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min);
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
@@ -99,14 +95,14 @@ inline void get_vol_0_100(
 }
 
 
-/* set volume as in range 0-100 or native range if change_range is FALSE */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range)
+/* set volume as in range 0-100 or native range if change_range is false */
+void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool change_range)
 {
     int err = 0;
     long int min, max;
 
     /* check input range */
-    if (change_range == TRUE) {
+    if (change_range) {
         if (new_vol < 0) {
             new_vol = 0;
         } else if (new_vol > 100) {
@@ -124,7 +120,7 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range)
         }
     }
 
-    if (change_range == TRUE) {
+    if (change_range) {
         snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
         new_vol = min + (max - min) * new_vol / 100;
     }
@@ -176,12 +172,12 @@ void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min)
     get_vol(elem, &current_vol);
     if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(elem, new_vol, TRUE);
+            set_vol(elem, new_vol, true);
         else
-            set_vol(elem, DEFAULT_VOL, TRUE);
+            set_vol(elem, DEFAULT_VOL, true);
     }
     else {
-        set_vol(elem, 0, TRUE);
+        set_vol(elem, 0, true);
     }
     return;
 }
@@ -292,10 +288,10 @@ int main(const int argc, const char* argv[])
                 if (new_vol != 0) {
                     long int current_vol = -1;
                     get_vol(elem, &current_vol);
-                    set_vol(elem, current_vol + new_vol, FALSE);
+                    set_vol(elem, current_vol + new_vol, false);
                 }
             } else {
-                set_vol(elem, new_vol, TRUE);
+                set_vol(elem, new_vol, true);
             }
         }
 
