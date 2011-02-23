@@ -15,9 +15,9 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define VERSION "0.2.2"
+#define VERSION "0.2.3"
 #define DEFAULT_VOL 32
-//#define USE_LOCK_FILE
+#define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
 
 #define TRUE 0
@@ -25,7 +25,7 @@
 
 int check_lock_file(void);
 long int get_vol(snd_mixer_elem_t* elem);
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle);
+snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
 snd_mixer_t* get_handle(void);
 void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
 void delete_lock_file(void);
@@ -50,13 +50,13 @@ snd_mixer_t* get_handle() {
 
 
 /* get mixer elem from the handle */
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle) {
+snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
     snd_mixer_elem_t* elem = NULL;
 
     /* get snd_mixer_elem_t pointer, corresponding Master */
     snd_mixer_elem_t* var = snd_mixer_first_elem(handle);
     while (var != NULL) {
-        if (strcasecmp("Master", snd_mixer_selem_get_name(var)) == 0) {
+        if (strcasecmp(name, snd_mixer_selem_get_name(var)) == 0) {
             elem = var;
             break;
         }
@@ -179,10 +179,16 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc) {
 
 /*****************
  * MAIN function */
-int main(int argc, char* argv[])
+int main(const int argc, const char* argv[])
 {
+    const char* input_help = "[[+|-]<volume>]|[-s [+|-]<volume>]] [-t] [-tf]"
+        "\n\n"
+        "Option help:\n"
+        "t:\tToggle volume.\n"
+        "tf:\tToggle front panel.\n";
     int new_vol = INT_MAX; // set volume to this
     unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
+    bool toggle_fp = false; // Toggle front panel
     bool inc = false; // do we increase volume
     long int min, max;
 
@@ -192,19 +198,34 @@ int main(int argc, char* argv[])
             get_vol_from_arg(argv[++i], &new_vol, &inc);
         } else if (strcmp(argv[i], "-t") == 0) {
             toggle = 1;
+        } else if (strcmp(argv[i], "-tf") == 0) {
+            toggle_fp = true;
         } else {
             get_vol_from_arg(argv[i], &new_vol, &inc);
             if (strcmp(argv[i], "0") != 0 &&
                     !(new_vol != 0 && new_vol != INT_MAX && new_vol != INT_MIN)) {
-                fprintf(stderr, "avolt - v" VERSION ": %s [-s [+|-]<volume>] [-t]\n",
-                        argv[0]);
+                fprintf(stderr, "avolt - v" VERSION ": %s %s\n",
+                        argv[0], input_help);
                 return 1;
             }
         }
     }
 
     snd_mixer_t* handle = get_handle();
-    snd_mixer_elem_t* elem = get_elem(handle);
+
+    /* Toggle the front panel */
+    if (toggle_fp) {
+        snd_mixer_elem_t* front_panel_elem = get_elem(handle, "Front Panel");
+        assert(snd_mixer_selem_has_playback_switch(front_panel_elem) == 1);
+
+        int switch_value = -1;
+        snd_mixer_selem_get_playback_switch(front_panel_elem, SND_MIXER_SCHN_FRONT_LEFT, &switch_value);
+        int err = snd_mixer_selem_set_playback_switch_all(front_panel_elem, !switch_value);
+        /* Exit if nothing else to do */
+        if (new_vol == INT_MAX || !toggle) return err;
+    }
+
+    snd_mixer_elem_t* elem = get_elem(handle, "Master");
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
     if (new_vol != INT_MAX || toggle) {
