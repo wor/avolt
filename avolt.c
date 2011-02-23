@@ -49,7 +49,7 @@ snd_mixer_t* get_handle() {
 }
 
 
-/* get mixer elem from the handle */
+/* get mixer elem with given name from the handle */
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
     snd_mixer_elem_t* elem = NULL;
 
@@ -68,7 +68,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
 }
 
 
-/* gets mixer volume without range chaning */
+/* gets mixer volume without changing range */
 long int get_vol(snd_mixer_elem_t* elem) {
     long int a, b;
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
@@ -186,10 +186,10 @@ int main(const int argc, const char* argv[])
         "Option help:\n"
         "t:\tToggle volume.\n"
         "tf:\tToggle front panel.\n";
-    int new_vol = INT_MAX; // set volume to this
-    unsigned int toggle = 0; // toggle volume 0 <-> default_toggle_vol
+    int new_vol = INT_MAX; // Set volume to this
+    unsigned int toggle = 0; // Toggle volume 0 <-> default_toggle_vol
     bool toggle_fp = false; // Toggle front panel
-    bool inc = false; // do we increase volume
+    bool inc = false; // Do we increase volume
     long int min, max;
 
     /* read parameters */
