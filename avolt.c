@@ -20,14 +20,20 @@
 #define USE_LOCK_FILE
 #define LOCK_FILE "/tmp/.avolt.lock"
 
+/* TODO: cleanup: use bool */
 #define TRUE 0
 #define FALSE -1
 
+/* When toggling front panel off, set volume to default if no new volume given.
+ * */
+const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
+
 int check_lock_file(void);
-long int get_vol(snd_mixer_elem_t* elem);
+void get_vol(snd_mixer_elem_t* elem, long int* vol);
+void get_vol_0_100(snd_mixer_elem_t* elem, long int const* const min, long int const* const max, long int* percent_vol);
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
 snd_mixer_t* get_handle(void);
-void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max);
+void change_range(long int* num, int const r_f_min, int const r_f_max, int const r_t_min, int const r_t_max);
 void delete_lock_file(void);
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range);
 void set_vol_relative(snd_mixer_elem_t* elem, long int vol_change);
@@ -69,14 +75,24 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name) {
 
 
 /* gets mixer volume without changing range */
-long int get_vol(snd_mixer_elem_t* elem) {
+void get_vol(snd_mixer_elem_t* elem, long int* vol) {
     long int a, b;
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, &b);
 
-    long int louder_channel_vol = a >= b ? a : b;
+    *vol = a >= b ? a : b;
+}
 
-    return louder_channel_vol;
+
+/* get volume in 0 - 100 range */
+void get_vol_0_100(
+        snd_mixer_elem_t* elem,
+        long int const* const min,
+        long int const* const max,
+        long int* percent_vol)
+{
+        get_vol(elem, percent_vol);
+        change_range(percent_vol, *min, *max, 0, 100);
 }
 
 
@@ -118,7 +134,13 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, int change_range) {
 
 /* set changes int range, from range -> to range
  * TODO: if change is made to smaller range, round to resolution borders */
-void change_range(long int* num, int r_f_min, int r_f_max, int r_t_min, int r_t_max) {
+void change_range(
+        long int* num,
+        int const r_f_min,
+        int const r_f_max,
+        int const r_t_min,
+        int const r_t_max) {
+
     // shift
     *num = *num - r_f_min;
 
@@ -144,7 +166,9 @@ int check_lock_file(void) {
 
 /* volume toggler between 0 <--> DEFAULT_VOL */
 void toggle_volume(snd_mixer_elem_t* elem, long int new_vol, long int min) {
-    if (get_vol(elem) == min) {
+    long int current_vol;
+    get_vol(elem, &current_vol);
+    if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
             set_vol(elem, new_vol, TRUE);
         else
@@ -190,7 +214,6 @@ int main(const int argc, const char* argv[])
     unsigned int toggle = 0; // Toggle volume 0 <-> default_toggle_vol
     bool toggle_fp = false; // Toggle front panel
     bool inc = false; // Do we increase volume
-    long int min, max;
 
     /* read parameters */
     for (int i = 1; i < argc; i++) {
@@ -211,23 +234,40 @@ int main(const int argc, const char* argv[])
         }
     }
 
+    long int min, max;
+
     snd_mixer_t* handle = get_handle();
+    snd_mixer_elem_t* elem = get_elem(handle, "Master");
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+
+    long int percent_vol = -1;
 
     /* Toggle the front panel */
     if (toggle_fp) {
+
         snd_mixer_elem_t* front_panel_elem = get_elem(handle, "Front Panel");
         assert(snd_mixer_selem_has_playback_switch(front_panel_elem) == 1);
 
         int switch_value = -1;
         snd_mixer_selem_get_playback_switch(front_panel_elem, SND_MIXER_SCHN_FRONT_LEFT, &switch_value);
         int err = snd_mixer_selem_set_playback_switch_all(front_panel_elem, !switch_value);
+
+        get_vol_0_100(elem, &min, &max, &percent_vol);
+        /* Set default volume if no new volume given and toggled off front
+         * panel. Also only if current volume higher than default volume.
+         * */
+        if (SET_DEFAULT_VOL_WHEN_FP_OFF &&
+                new_vol == INT_MAX &&
+                switch_value &&
+                percent_vol > DEFAULT_VOL)
+            new_vol = DEFAULT_VOL;
+
         /* Exit if nothing else to do */
-        if (new_vol == INT_MAX || !toggle) return err;
+        if (new_vol == INT_MAX && !toggle) return err;
     }
 
-    snd_mixer_elem_t* elem = get_elem(handle, "Master");
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
+    /* If new volume given or toggle volume */
     if (new_vol != INT_MAX || toggle) {
 #ifdef USE_LOCK_FILE
         if (check_lock_file() == 0) {
@@ -242,7 +282,9 @@ int main(const int argc, const char* argv[])
             /* first check if relative volume */
             if (inc || new_vol < 0) {
                 if (new_vol != 0) {
-                    set_vol(elem, get_vol(elem) + new_vol, FALSE);
+                    long int current_vol = -1;
+                    get_vol(elem, &current_vol);
+                    set_vol(elem, current_vol + new_vol, FALSE);
                 }
             } else {
                 set_vol(elem, new_vol, TRUE);
@@ -252,13 +294,14 @@ int main(const int argc, const char* argv[])
 #ifdef USE_LOCK_FILE
         delete_lock_file();
 #endif
-        return 0;
+    } else {
+        /* default action: get % volumes */
+        if (percent_vol < 0) {
+            get_vol(elem, &percent_vol);
+            change_range(&percent_vol, min, max, 0, 100);
+        }
+        printf("%li\n", percent_vol);
     }
-
-    /* default action: get % volumes */
-    long int percent_vol = get_vol(elem);
-    change_range(&percent_vol, min, max, 0, 100);
-    printf("%li\n", percent_vol);
 
     return 0;
 }
