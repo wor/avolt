@@ -4,7 +4,7 @@
 /* Simple program to set/get/toggle alsa Master volume */
 
 /* compile with:
- * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o volget
+ * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o avolt
  */
 
 /* TODO: check const correctness */
@@ -99,7 +99,7 @@ inline void get_vol(snd_mixer_elem_t* elem, long int* vol)
 }
 
 
-/* get volume in 0 - 100 range */
+/* get volume in % (0-100) range */
 inline void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
@@ -111,7 +111,7 @@ inline void get_vol_0_100(
 }
 
 
-/* set volume as in range 0-100 or native range if change_range is false */
+/* set volume as in range % (0-100) or in native range if change_range is false */
 void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
 {
     int err = 0;
@@ -148,7 +148,7 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
 }
 
 
-/* set changes int range, from range -> to range
+/* changes range, from range -> to range
  * TODO: if change is made to smaller range, round to resolution borders */
 void change_range(
         long int* num,
@@ -163,7 +163,7 @@ void change_range(
     // get multiplier
     float mul = (float)(r_t_max - r_t_min)/(float)(r_f_max - r_f_min);
 
-    // multiply and shift to new range
+    // multiply and shift to the new range
     float f = ((float)*num * mul) + r_t_min;
     *num = (int)f;
 }
