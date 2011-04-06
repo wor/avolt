@@ -1,7 +1,7 @@
 /* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
-/* Simple program to set/get/toggle alsa Master volume */
+/* Simple program to set/get/toggle alsa (Master) volume */
 
 /* compile with:
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o avolt
@@ -19,6 +19,7 @@
 #define VERSION "0.2.4"
 #define DEFAULT_VOL 32
 #define LOCK_FILE "/tmp/.avolt.lock"
+#define ELEMENT_TO_CONTROL "Master"
 
 /* When toggling front panel off, set volume to default if no new volume given.
  * */
@@ -73,7 +74,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
     snd_mixer_elem_t* elem = NULL;
 
-    /* get snd_mixer_elem_t pointer, corresponding Master */
+    /* get snd_mixer_elem_t pointer, corresponding ELEMENT_TO_CONTROL */
     snd_mixer_elem_t* var = snd_mixer_first_elem(handle);
     while (var != NULL) {
         if (strcasecmp(name, snd_mixer_selem_get_name(var)) == 0) {
@@ -263,7 +264,7 @@ int main(const int argc, const char* argv[])
     long int min, max;
 
     snd_mixer_t* handle = get_handle();
-    snd_mixer_elem_t* elem = get_elem(handle, "Master");
+    snd_mixer_elem_t* elem = get_elem(handle, ELEMENT_TO_CONTROL);
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
 
     /* current % volume */
