@@ -28,6 +28,15 @@ const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
 /* Use lock file to prevent concurrent calls. */
 const bool USE_LOCK_FILE = true;
 
+/* Command line options */
+struct cmd_options {
+    int new_vol; // Set volume to this
+    unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
+    bool toggle_fp; // Toggle front panel
+    bool inc; // Do we increase volume
+};
+
+
 /* Function declarations. */
 inline void get_vol(snd_mixer_elem_t* elem, long int* vol);
 inline void get_vol_0_100(
@@ -51,6 +60,7 @@ void toggle_volume(
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 inline void delete_lock_file(void);
 inline int check_lock_file(void);
+bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt);
 
 
 /* get alsa handle */
@@ -225,10 +235,8 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 }
 
 
-/*****************************************************************************
- * Main function
- * */
-int main(const int argc, const char* argv[])
+/* Reads cmd_line options to given options struct variable */
+bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt)
 {
     const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf]"
         "\n\n"
@@ -237,14 +245,34 @@ int main(const int argc, const char* argv[])
         "t:\tToggle volume.\n"
         "tf:\tToggle front panel.\n";
 
-    /* Command line options */
-    struct cmd_options {
-        int new_vol; // Set volume to this
-        unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
-        bool toggle_fp; // Toggle front panel
-        bool inc; // Do we increase volume
-    };
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
+            get_vol_from_arg(argv[++i], &cmd_opt->new_vol, &cmd_opt->inc);
+        } else if (strcmp(argv[i], "-t") == 0) {
+            cmd_opt->toggle = 1;
+        } else if (strcmp(argv[i], "-tf") == 0) {
+            cmd_opt->toggle_fp = true;
+        } else {
+            get_vol_from_arg(argv[i], &cmd_opt->new_vol, &cmd_opt->inc);
+            if (strcmp(argv[i], "0") != 0 &&
+                    !(cmd_opt->new_vol != 0
+                        && cmd_opt->new_vol != INT_MAX
+                        && cmd_opt->new_vol != INT_MIN)) {
+                fprintf(stderr, "avolt - v" VERSION ": %s %s\n",
+                        argv[0], input_help);
+                return false;
+            }
+        }
+    }
+    return true;
+}
 
+
+/*****************************************************************************
+ * Main function
+ * */
+int main(const int argc, const char* argv[])
+{
     /* Init command line options instance */
     struct cmd_options cmd_opt = {
         .new_vol = INT_MAX,
@@ -253,36 +281,18 @@ int main(const int argc, const char* argv[])
         .inc = false
     };
 
-    /* read parameters */
-    for (int i = 1; i < argc; i++) {
-        if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
-            get_vol_from_arg(argv[++i], &cmd_opt.new_vol, &cmd_opt.inc);
-        } else if (strcmp(argv[i], "-t") == 0) {
-            cmd_opt.toggle = 1;
-        } else if (strcmp(argv[i], "-tf") == 0) {
-            cmd_opt.toggle_fp = true;
-        } else {
-            get_vol_from_arg(argv[i], &cmd_opt.new_vol, &cmd_opt.inc);
-            if (strcmp(argv[i], "0") != 0 &&
-                    !(cmd_opt.new_vol != 0 && cmd_opt.new_vol != INT_MAX && cmd_opt.new_vol != INT_MIN)) {
-                fprintf(stderr, "avolt - v" VERSION ": %s %s\n",
-                        argv[0], input_help);
-                return 1;
-            }
-        }
-    }
+    /* Read parameters to cmd_opt */
+    if (!read_cmd_line_options(argc, argv, &cmd_opt)) return 1;
 
-    /* current volume range */
-    long int min, max;
-
+    /* Create needed variables */
     snd_mixer_t* handle = get_handle();
     snd_mixer_elem_t* elem = get_elem(handle, ELEMENT_TO_CONTROL);
+    long int min, max; /* current volume range */
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+    long int percent_vol = -1; /* current % volume */
 
-    /* current % volume */
-    long int percent_vol = -1;
 
-    /* Toggle the front panel 
+    /* Toggle the front panel
      * TODO: set new vol first only if toggling fp off */
     if (cmd_opt.toggle_fp) {
         snd_mixer_elem_t* front_panel_elem = get_elem(handle, "Front Panel");
