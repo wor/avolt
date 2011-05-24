@@ -16,7 +16,7 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define VERSION "0.2.4"
+#define VERSION "0.2.5a"
 #define DEFAULT_VOL 32
 #define LOCK_FILE "/tmp/.avolt.lock"
 #define ELEMENT_TO_CONTROL "Master"
@@ -295,8 +295,11 @@ int main(const int argc, const char* argv[])
     /* Toggle the front panel
      * TODO: set new vol first only if toggling fp off */
     if (cmd_opt.toggle_fp) {
+
         snd_mixer_elem_t* front_panel_elem = get_elem(handle, "Front Panel");
-        assert(snd_mixer_selem_has_playback_switch(front_panel_elem) == 1);
+
+        /* TODO: How to check if front panel exits at all?
+         * snd_mixer_selem_has_playback_switch(front_panel_elem) */
 
         int switch_value = -1;
         snd_mixer_selem_get_playback_switch(front_panel_elem, SND_MIXER_SCHN_FRONT_LEFT, &switch_value);
@@ -311,9 +314,10 @@ int main(const int argc, const char* argv[])
                 cmd_opt.new_vol == INT_MAX &&
                 switch_value) {
             get_vol_0_100(elem, &min, &max, &percent_vol);
-            if (percent_vol > DEFAULT_VOL) cmd_opt.new_vol = DEFAULT_VOL;
+            if (percent_vol > DEFAULT_VOL) set_vol(elem, DEFAULT_VOL, true);
         }
 
+        /* Toggle the front panel */
         int err = snd_mixer_selem_set_playback_switch_all(front_panel_elem, !switch_value);
 
         /* Exit if nothing else to do */
