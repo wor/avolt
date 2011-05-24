@@ -18,12 +18,15 @@
 
 #define VERSION "0.2.5a"
 #define DEFAULT_VOL 32
+#define WARNING_VOL 55
 #define LOCK_FILE "/tmp/.avolt.lock"
 #define ELEMENT_TO_CONTROL "Master"
 
 /* When toggling front panel off, set volume to default if no new volume given.
  * */
 const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
+
+const bool SET_HIGH_VOLUME_WARNING = true;
 
 /* Use lock file to prevent concurrent calls. */
 const bool USE_LOCK_FILE = true;
@@ -315,6 +318,14 @@ int main(const int argc, const char* argv[])
                 switch_value) {
             get_vol_0_100(elem, &min, &max, &percent_vol);
             if (percent_vol > DEFAULT_VOL) set_vol(elem, DEFAULT_VOL, true);
+        }
+
+        if (SET_HIGH_VOLUME_WARNING &&
+                cmd_opt.new_vol > WARNING_VOL &&
+                switch_value) {
+            printf("Are you sure you want to set the main volume to %i? [N/y]: ", cmd_opt.new_vol);
+            if (fgetc(stdin) != 'y')
+                cmd_opt.new_vol = INT_MAX;
         }
 
         /* Toggle the front panel */
