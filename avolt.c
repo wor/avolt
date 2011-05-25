@@ -1,7 +1,11 @@
 /* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
-/* Simple program to set/get/toggle alsa (Master) volume */
+/* Simple program to set/get/toggle alsa (Master) volume.
+ *
+ * TODO: save current volume and restore it if front panel toggling
+ * fails.
+ * */
 
 /* compile with:
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o avolt
@@ -307,25 +311,23 @@ int main(const int argc, const char* argv[])
         int switch_value = -1;
         snd_mixer_selem_get_playback_switch(front_panel_elem, SND_MIXER_SCHN_FRONT_LEFT, &switch_value);
 
-        /* TODO: save current volume and restore it if front panel toggling
-         * fails. */
-        /* Set default volume if no new volume given and we are going to toggle
-         * off the front panel. Also only if current volume higher than default
-         * volume. (This is done before setting the front panel off to avoid
-         * volume spike) */
-        if (SET_DEFAULT_VOL_WHEN_FP_OFF &&
-                cmd_opt.new_vol == INT_MAX &&
-                switch_value) {
-            get_vol_0_100(elem, &min, &max, &percent_vol);
-            if (percent_vol > DEFAULT_VOL) set_vol(elem, DEFAULT_VOL, true);
-        }
-
-        if (SET_HIGH_VOLUME_WARNING &&
-                cmd_opt.new_vol > WARNING_VOL &&
-                switch_value) {
-            printf("Are you sure you want to set the main volume to %i? [N/y]: ", cmd_opt.new_vol);
-            if (fgetc(stdin) != 'y')
-                cmd_opt.new_vol = INT_MAX;
+        /* If toggling off the front panel */
+        if (switch_value) {
+            /* Set default volume if no new volume given and only if current
+             * volume is higher than the default volume. (This is done before
+             * setting the front panel off to avoid volume spike) */
+            if (SET_DEFAULT_VOL_WHEN_FP_OFF &&
+                    cmd_opt.new_vol == INT_MAX) {
+                get_vol_0_100(elem, &min, &max, &percent_vol);
+                if (percent_vol > DEFAULT_VOL) set_vol(elem, DEFAULT_VOL, true);
+            }
+            /* Check volume limit if setting new volume */
+            else if (SET_HIGH_VOLUME_WARNING &&
+                    cmd_opt.new_vol > WARNING_VOL) {
+                printf("Are you sure you want to set the main volume to %i? [N/y]: ", cmd_opt.new_vol);
+                if (fgetc(stdin) != 'y')
+                    cmd_opt.new_vol = INT_MAX;
+            }
         }
 
         /* Toggle the front panel */
