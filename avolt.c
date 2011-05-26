@@ -8,7 +8,7 @@
  * */
 
 /* compile with:
- * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 get_master_vol.c -o avolt
+ * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 avolt.c -o avolt
  */
 
 /* TODO: check const correctness */
@@ -45,8 +45,8 @@ struct cmd_options {
 
 
 /* Function declarations. */
-inline void get_vol(snd_mixer_elem_t* elem, long int* vol);
-inline void get_vol_0_100(
+void get_vol(snd_mixer_elem_t* elem, long int* vol);
+void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
         long int const* const max,
@@ -65,8 +65,8 @@ void toggle_volume(
         long int const new_vol,
         long int const min);
 void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
-inline void delete_lock_file(void);
-inline int check_lock_file(void);
+void delete_lock_file(void);
+int check_lock_file(void);
 bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt);
 
 
@@ -107,7 +107,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 
 
 /* gets mixer volume without changing range */
-inline void get_vol(snd_mixer_elem_t* elem, long int* vol)
+void get_vol(snd_mixer_elem_t* elem, long int* vol)
 {
     long int a, b;
     snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
@@ -118,7 +118,7 @@ inline void get_vol(snd_mixer_elem_t* elem, long int* vol)
 
 
 /* get volume in % (0-100) range */
-inline void get_vol_0_100(
+void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
         long int const* const max,
@@ -188,7 +188,7 @@ void change_range(
 
 
 /* checks if lock file exists and exits if it does */
-inline int check_lock_file(void)
+int check_lock_file(void)
 {
     if(access(LOCK_FILE, F_OK) == 0) {
         return 0;
@@ -221,7 +221,7 @@ void toggle_volume(
 
 
 /* deletes lock file */
-inline void delete_lock_file(void)
+void delete_lock_file(void)
 {
     remove(LOCK_FILE);
     return;
