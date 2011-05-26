@@ -5,30 +5,38 @@ VERSION='0.0.1'
 APPNAME='avolt'
 
 top = '.'
-out = '/tmp/avolt_build'
+out = "/tmp/" + APPNAME + "_build"
 
 
 def options(opt):
-        opt.add_option('--use-gcc', action='store_true', default=False, help='Prefer gcc as compiler.')
-        opt.tool_options('compiler_cc')
+        opt.add_option(
+                '--use-gcc',
+                action='store_true',
+                default=False,
+                help='Prefer gcc as compiler.')
+        opt.tool_options('compiler_c')
 
 
 def configure(conf):
         import Options
 
-        conf.check_tool('compiler_cc')
+        conf.check_tool('compiler_c')
+
+        # find programs
+        conf.find_program('clang', var='CLANG_PATH', mandatory=False)
 
         # enable clang if found and if not --use-gcc option given
-        conf.find_program('clang', var='CLANG_PATH', mandatory=False)
         if conf.env.CLANG_PATH and not Options.options.use_gcc:
             conf.env.CC = conf.env.CLANG_PATH
             conf.env.LINK_CC = conf.env.CLANG_PATH
             conf.env.CC_NAME = 'clang'
             conf.env.COMPILER_CC = 'clang'
-            conf.env.CPP = conf.env.CLANG_PATH + "++"
+            # conf.env.CPP = conf.env.CLANG_PATH + "++"
 
-        conf.check_cfg(path='pkg-config', args='--cflags --libs alsa',
-                package='', uselib_store='MAIN')
+        conf.check_cfg(
+                package='alsa',
+                args='--cflags --libs',
+                uselib_store='MAIN')
 
         conf.env.CCDEFINES_MAIN = ['MAIN']
         conf.env.CCFLAGS_MAIN   = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
