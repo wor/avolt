@@ -20,19 +20,21 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define VERSION "0.2.5a"
+#define VERSION "0.2.6a"
+#define DEFAULT_FP_VOL 50
 #define DEFAULT_VOL 32
 #define WARNING_VOL 55
 #define LOCK_FILE "/tmp/.avolt.lock"
 #define ELEMENT_TO_CONTROL "Master"
 
-/* When toggling front panel off, set volume to default if no new volume given.
- * */
 const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
+
+const bool SET_DEFAULT_FP_VOL_WHEN_FP_ON = true;
 
 const bool SET_HIGH_VOLUME_WARNING = true;
 
-/* Use lock file to prevent concurrent calls. */
+/* Use lock file to prevent concurrent calls.
+ * File creation probably isn't atomic so this is NOT a good way to handle this. */
 const bool USE_LOCK_FILE = true;
 
 /* Command line options */
@@ -45,7 +47,7 @@ struct cmd_options {
 
 
 /* Function declarations. */
-void get_vol(snd_mixer_elem_t* elem, long int* vol);
+static void get_vol(snd_mixer_elem_t* elem, long int* vol);
 void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
@@ -241,6 +243,30 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
     }
 }
 
+/* Print information to given FILE* about statically set config options. */
+void print_config(FILE* output) {
+    fprintf(output, "Static options help:\n");
+    fprintf(output,
+            "The alsa element to control by default is: %s\n",
+            ELEMENT_TO_CONTROL);
+    if (SET_DEFAULT_VOL_WHEN_FP_OFF)
+        fprintf(output,
+                "When front panel is toggled off, default volume which is set "
+                "(if current volume greater than this) is: %i\n", DEFAULT_VOL);
+    if (SET_DEFAULT_FP_VOL_WHEN_FP_ON)
+        fprintf(output,
+                "When front panel is toggled on set volume to this if no other "
+                "volume given: %i\n", DEFAULT_FP_VOL);
+    if (SET_HIGH_VOLUME_WARNING)
+        fprintf(output,
+            "When toggling off the front panel and setting volume, ask for "
+            "confirmation if the volume exceeds this: %i\n", WARNING_VOL);
+    if (USE_LOCK_FILE)
+        fprintf(output,
+            "Use of lock file '%s' is enabled to prevent concurrent volume "
+            "settings.\n", LOCK_FILE);
+}
+
 
 /* Reads cmd_line options to given options struct variable */
 bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt)
@@ -267,6 +293,7 @@ bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options
                         && cmd_opt->new_vol != INT_MIN)) {
                 fprintf(stderr, "avolt - v" VERSION ": %s %s\n",
                         argv[0], input_help);
+                print_config(stderr);
                 return false;
             }
         }
@@ -329,6 +356,10 @@ int main(const int argc, const char* argv[])
                     cmd_opt.new_vol = INT_MAX;
             }
         }
+        else {
+            if (SET_DEFAULT_FP_VOL_WHEN_FP_ON)
+                set_vol(elem, DEFAULT_FP_VOL, true);
+        }
 
         /* Toggle the front panel */
         int err = snd_mixer_selem_set_playback_switch_all(front_panel_elem, !switch_value);
@@ -344,7 +375,7 @@ int main(const int argc, const char* argv[])
         if (cmd_opt.toggle) {
             toggle_volume(elem, cmd_opt.new_vol, min);
         } else {
-            /* change absolut and relative volumes */
+            /* change absolute and relative volumes */
             /* first check if relative volume */
             if (cmd_opt.inc || cmd_opt.new_vol < 0) {
                 if (cmd_opt.new_vol != 0) {
