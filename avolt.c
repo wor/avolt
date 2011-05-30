@@ -20,22 +20,7 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define VERSION "0.2.6a"
-#define DEFAULT_FP_VOL 50
-#define DEFAULT_VOL 32
-#define WARNING_VOL 55
-#define LOCK_FILE "/tmp/.avolt.lock"
-#define ELEMENT_TO_CONTROL "Master"
-
-const bool SET_DEFAULT_VOL_WHEN_FP_OFF = true;
-
-const bool SET_DEFAULT_FP_VOL_WHEN_FP_ON = true;
-
-const bool SET_HIGH_VOLUME_WARNING = true;
-
-/* Use lock file to prevent concurrent calls.
- * File creation probably isn't atomic so this is NOT a good way to handle this. */
-const bool USE_LOCK_FILE = true;
+#include "avolt.conf"
 
 /* Command line options */
 struct cmd_options {
@@ -48,28 +33,28 @@ struct cmd_options {
 
 /* Function declarations. */
 static void get_vol(snd_mixer_elem_t* elem, long int* vol);
-void get_vol_0_100(
+static void get_vol_0_100(
         snd_mixer_elem_t* elem,
         long int const* const min,
         long int const* const max,
         long int* percent_vol);
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
-snd_mixer_t* get_handle(void);
-void change_range(
+static snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
+static snd_mixer_t* get_handle(void);
+static void change_range(
         long int* num,
         int const r_f_min,
         int const r_f_max,
         int const r_t_min,
         int const r_t_max);
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range);
-void toggle_volume(
+static void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range);
+static void toggle_volume(
         snd_mixer_elem_t* elem,
         long int const new_vol,
         long int const min);
-void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
-void delete_lock_file(void);
-int check_lock_file(void);
-bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt);
+static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
+static void delete_lock_file(void);
+static int check_lock_file(void);
+static bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt);
 
 
 /* get alsa handle */
@@ -291,8 +276,8 @@ bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options
                     !(cmd_opt->new_vol != 0
                         && cmd_opt->new_vol != INT_MAX
                         && cmd_opt->new_vol != INT_MIN)) {
-                fprintf(stderr, "avolt - v" VERSION ": %s %s\n",
-                        argv[0], input_help);
+                fprintf(stderr, "avolt - v %s: %s %s\n",
+                        VERSION, argv[0], input_help);
                 print_config(stderr);
                 return false;
             }
