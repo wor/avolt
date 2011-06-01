@@ -16,14 +16,20 @@
 #include <alsa/asoundlib.h>
 #include <stdio.h>
 #include <strings.h>
-#include <unistd.h> /* access */
+#include <unistd.h>   /* access */
 #include <limits.h>
 #include <stdbool.h>
+
+/* For semaphores to prevent swamping alsa */
+#include <fcntl.h>    /* Defines O_* constants */
+#include <sys/stat.h> /* Defines mode constants */
+#include <semaphore.h>
 
 #include "avolt.conf"
 
 /* Command line options */
-struct cmd_options {
+struct cmd_options
+{
     int new_vol; // Set volume to this
     unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
     bool toggle_fp; // Toggle front panel
@@ -31,7 +37,7 @@ struct cmd_options {
 };
 
 
-/* Function declarations. */
+/* Function declarations */
 static void get_vol(snd_mixer_elem_t* elem, long int* vol);
 static void get_vol_0_100(
         snd_mixer_elem_t* elem,
@@ -46,7 +52,10 @@ static void change_range(
         int const r_f_max,
         int const r_t_min,
         int const r_t_max);
-static void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range);
+static void set_vol(
+        snd_mixer_elem_t* elem,
+        long int new_vol,
+        bool const change_range);
 static void toggle_volume(
         snd_mixer_elem_t* elem,
         long int const new_vol,
@@ -54,10 +63,13 @@ static void toggle_volume(
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 static void delete_lock_file(void);
 static int check_lock_file(void);
-static bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt);
+static bool read_cmd_line_options(
+        const int argc,
+        const char** argv,
+        struct cmd_options* cmd_opt);
 
 
-/* get alsa handle */
+/* Get alsa handle */
 snd_mixer_t* get_handle()
 {
     snd_mixer_t* handle = NULL;
@@ -73,7 +85,7 @@ snd_mixer_t* get_handle()
 }
 
 
-/* get mixer elem with given name from the handle */
+/* Get mixer elem with given name from the handle */
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
     snd_mixer_elem_t* elem = NULL;
@@ -93,7 +105,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 }
 
 
-/* gets mixer volume without changing range */
+/* Gets mixer volume without changing range */
 void get_vol(snd_mixer_elem_t* elem, long int* vol)
 {
     long int a, b;
@@ -229,7 +241,8 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 }
 
 /* Print information to given FILE* about statically set config options. */
-void print_config(FILE* output) {
+void print_config(FILE* output)
+{
     fprintf(output, "Static options help:\n");
     fprintf(output,
             "The alsa element to control by default is: %s\n",
