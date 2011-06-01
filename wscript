@@ -40,7 +40,10 @@ def configure(conf):
 
         conf.env.CCDEFINES_MAIN = ['MAIN']
         conf.env.CCFLAGS_MAIN   = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
-        conf.env.LIBPATH_MAIN   = ['/usr/lib']
+        #conf.env.LIBPATH_MAIN   = ['/usr/lib']
+
+        # Add additional system libraries for linking
+        conf.env.LIB_MAIN.append('pthread') # rt is works for gcc but not clang??
 
 
 def build(bld):
@@ -51,7 +54,7 @@ def build(bld):
                 target       = APPNAME,
                 vnum         = VERSION,
                 includes     = ['.'],
-                libpath      = ['/usr/lib'],
+                #libpath      = ['/usr/lib'],
                 uselib      = 'MAIN'
         )
         t.rpath          = ['/usr/lib']
