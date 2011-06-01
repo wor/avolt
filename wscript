@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*- vim:fenc=utf-8:ft=python:et:sw=4:ts=4:sts=4
 # can be build easily with:
-# clang $(pkg-config --cflags --libs alsa) -std=c99 avolt.c -o avolt
+# clang $(pkg-config --cflags --libs alsa) -lphtread -std=c99 avolt.c -o avolt
 VERSION='0.0.1'
 APPNAME='avolt'
 
@@ -22,6 +22,9 @@ def configure(conf):
 
         conf.check_tool('compiler_c')
 
+        # check system libraries
+        conf.check_cc(lib='pthread', cflags='-Wall', uselib_store='MAIN')
+
         # find programs
         conf.find_program('clang', var='CLANG_PATH', mandatory=False)
 
@@ -39,11 +42,9 @@ def configure(conf):
                 uselib_store='MAIN')
 
         conf.env.CCDEFINES_MAIN = ['MAIN']
-        conf.env.CCFLAGS_MAIN   = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
-        #conf.env.LIBPATH_MAIN   = ['/usr/lib']
 
-        # Add additional system libraries for linking
-        conf.env.LIB_MAIN.append('pthread') # rt is works for gcc but not clang??
+        conf.env.CCFLAGS_MAIN = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
+        #conf.env.LIBPATH_MAIN   = ['/usr/lib']
 
 
 def build(bld):
