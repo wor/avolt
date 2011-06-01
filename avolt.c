@@ -20,9 +20,8 @@
 #include <limits.h>
 #include <stdbool.h>
 
-/* For semaphores to prevent swamping alsa */
+/* For semaphores to prevent swamping alsa with multiple calls */
 #include <fcntl.h>    /* Defines O_* constants */
-#include <sys/stat.h> /* Defines mode constants */
 #include <semaphore.h>
 
 #include "avolt.conf"
@@ -61,8 +60,7 @@ static void toggle_volume(
         long int const new_vol,
         long int const min);
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
-static void delete_lock_file(void);
-static int check_lock_file(void);
+bool check_semaphore(sem_t** sem);
 static bool read_cmd_line_options(
         const int argc,
         const char** argv,
@@ -186,15 +184,33 @@ void change_range(
 }
 
 
-/* checks if lock file exists and exits if it does */
-int check_lock_file(void)
+/* Checks semaphore preventing swamping alsa with multiple avolt instances */
+bool check_semaphore(sem_t** sem)
 {
-    if(access(LOCK_FILE, F_OK) == 0) {
-        return 0;
-    } else {
-        fclose(fopen(LOCK_FILE, "w"));
-        return -1;
+    if (!*sem) {
+        /* Note: the final permission depend on the umask (open(2)) */
+        *sem = sem_open("avolt", O_CREAT, 0660, 1);
+        if (*sem == SEM_FAILED) {
+            fprintf(stderr, "Avolt ERROR: Semaphore opening failed.\n");
+            fprintf(stderr, "%s\n", strerror(errno));
+            return false;
+        }
+        if (sem_wait(*sem) == -1) {
+            fprintf(stderr, "Avolt ERROR: Semaphore waiting (decrementing) failed.\n");
+            fprintf(stderr, "%s\n", strerror(errno));
+            return false;
+        }
     }
+    else {
+        if (sem_post(*sem) == -1) {
+            fprintf(stderr, "Avolt ERROR: Semaphore posting (incrementing) failed.\n");
+            fprintf(stderr, "%s\n", strerror(errno));
+            return false;
+        }
+        sem_close(*sem);
+    }
+
+    return true;
 }
 
 
@@ -215,14 +231,6 @@ void toggle_volume(
     else {
         set_vol(elem, 0, true);
     }
-    return;
-}
-
-
-/* deletes lock file */
-void delete_lock_file(void)
-{
-    remove(LOCK_FILE);
     return;
 }
 
@@ -259,10 +267,10 @@ void print_config(FILE* output)
         fprintf(output,
             "When toggling off the front panel and setting volume, ask for "
             "confirmation if the volume exceeds this: %i\n", WARNING_VOL);
-    if (USE_LOCK_FILE)
+    if (USE_SEMAPHORE)
         fprintf(output,
-            "Use of lock file '%s' is enabled to prevent concurrent volume "
-            "settings.\n", LOCK_FILE);
+            "Use semaphore named '%s' to enable concurrent volume "
+            "setting preventing.\n", SEMAPHORE_NAME);
 }
 
 
@@ -322,7 +330,7 @@ int main(const int argc, const char* argv[])
     long int min, max; /* current volume range */
     snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
     long int percent_vol = -1; /* current % volume */
-
+    sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
 
     /* Toggle the front panel
      * TODO: set new vol first only if toggling fp off */
@@ -368,7 +376,7 @@ int main(const int argc, const char* argv[])
 
     /* If new volume given or toggle volume */
     if (cmd_opt.new_vol != INT_MAX || cmd_opt.toggle) {
-        if (USE_LOCK_FILE && check_lock_file() == 0) return 0;
+        if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
 
         if (cmd_opt.toggle) {
             toggle_volume(elem, cmd_opt.new_vol, min);
@@ -386,7 +394,7 @@ int main(const int argc, const char* argv[])
             }
         }
 
-        if (USE_LOCK_FILE) delete_lock_file();
+        if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
     } else {
         /* default action: get % volumes */
         if (percent_vol < 0) {
