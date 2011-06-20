@@ -5,6 +5,7 @@
  *
  * TODO: save current volume and restore it if front panel toggling
  * fails.
+ * TODO: check that front panel volume toggling works. 0<-->front panel default.
  * */
 
 /* compile with:
@@ -57,7 +58,7 @@ static void set_vol(
         long int new_vol,
         bool const change_range);
 static void toggle_volume(
-        snd_mixer_elem_t* elem,
+        struct mixer_element_conf* element_conf,
         long int const new_vol,
         long int const min);
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
@@ -66,6 +67,7 @@ static bool read_cmd_line_options(
         const int argc,
         const char** argv,
         struct cmd_options* cmd_opt);
+static bool get_mixer_front_panel_switch();
 
 
 /* Get alsa handle */
@@ -89,7 +91,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
     snd_mixer_elem_t* elem = NULL;
 
-    /* get snd_mixer_elem_t pointer, corresponding ELEMENT_TO_CONTROL */
+    /* get snd_mixer_elem_t pointer, corresponding MASTER.element_name */
     snd_mixer_elem_t* var = snd_mixer_first_elem(handle);
     while (var != NULL) {
         if (strcasecmp(name, snd_mixer_selem_get_name(var)) == 0) {
@@ -215,22 +217,22 @@ bool check_semaphore(sem_t** sem)
 }
 
 
-/* volume toggler between 0 <--> DEFAULT_VOL */
+/* volume toggler between 0 <--> element default volume */
 void toggle_volume(
-        snd_mixer_elem_t* elem,
+        struct mixer_element_conf* element_conf,
         long int const new_vol,
         long int const min)
 {
     long int current_vol;
-    get_vol(elem, &current_vol);
+    get_vol(MASTER.element, &current_vol);
     if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(elem, new_vol, true);
+            set_vol(MASTER.element, new_vol, true);
         else
-            set_vol(elem, DEFAULT_VOL, true);
+            set_vol(MASTER.element, element_conf->default_volume, true);
     }
     else {
-        set_vol(elem, 0, true);
+        set_vol(MASTER.element, 0, true);
     }
     return;
 }
@@ -253,25 +255,38 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 /* Print information to given FILE* about statically set config options. */
 void print_config(FILE* output)
 {
-    fprintf(output, "Static options help:\n");
+    fprintf(output, "Static option help:\n");
     fprintf(output,
             "The alsa element to control by default is: %s\n",
-            ELEMENT_TO_CONTROL);
+            MASTER.element_name);
     fprintf(output,
             "The alsa front panel element to control by default is: %s\n",
-            FP_ELEMENT_TO_CONTROL);
-    if (SET_DEFAULT_VOL_WHEN_FP_OFF)
+            FRONT_PANEL.element_name);
+
+    fprintf(output,
+            "Mixer element settings:\n");
+    const int mixer_elements_size = sizeof(MIXER_ELEMENTS) /
+        sizeof(struct mixer_element_conf*);
+    const char* indent = "  ";
+    for (int i = 0; i < mixer_elements_size; ++i) {
         fprintf(output,
-                "When front panel is toggled off, default volume which is set "
-                "(if current volume greater than this) is: %i\n", DEFAULT_VOL);
-    if (SET_DEFAULT_FP_VOL_WHEN_FP_ON)
-        fprintf(output,
-                "When front panel is toggled on set volume to this if no other "
-                "volume given: %i\n", DEFAULT_FP_VOL);
-    if (SET_HIGH_VOLUME_WARNING)
-        fprintf(output,
-            "When toggling off the front panel and setting volume, ask for "
-            "confirmation if the volume exceeds this: %i\n", WARNING_VOL);
+                "%sName: %s\n"
+                "%s%sDefault volume: %i\n"
+                "%s%sSoft limit volume: %i\n"
+                "%s%sSet default volume: %i\n"
+                "%s%sConfirm soft volume limit exceeding: %i\n",
+                indent,
+                MIXER_ELEMENTS[i]->element_name,
+                indent, indent,
+                MIXER_ELEMENTS[i]->default_volume,
+                indent, indent,
+                MIXER_ELEMENTS[i]->soft_limit_volume,
+                indent, indent,
+                MIXER_ELEMENTS[i]->set_default_volume,
+                indent, indent,
+                MIXER_ELEMENTS[i]->confirm_exeeding_volume_limit
+                );
+    }
     if (USE_SEMAPHORE)
         fprintf(output,
             "Use semaphore named '%s' to enable concurrent volume "
@@ -323,39 +338,14 @@ bool read_cmd_line_options(
 
 
 /* Gets mixer front panels switch value (on/off).
- * Returns TODO. */
-bool get_mixer_front_panel_switch(
-        snd_mixer_t* mixer_handle,
-        snd_mixer_elem_t** front_panel_elem,
-        int* switch_value)
+ * Returns true for "on" and false for "off". */
+bool get_mixer_front_panel_switch()
 {
-    /* TODO: How to check if front panel exits at all?
+    /* XXX: If to be generalized check that element has playback switch:
      * snd_mixer_selem_has_playback_switch(front_panel_elem) */
-    assert(mixer_handle);
-
-    snd_mixer_elem_t* fpe = NULL;
-
-    /* TODO: refactor and comment */
-    if (!front_panel_elem) {
-        fpe = get_elem(mixer_handle, FP_ELEMENT_TO_CONTROL);
-    }
-    else if (*front_panel_elem == NULL) {
-        fpe = get_elem(mixer_handle, FP_ELEMENT_TO_CONTROL);
-        *front_panel_elem = fpe;
-    }
-    else {
-        fpe = *front_panel_elem;
-    }
-
-    /* If no switch value given return switch state */
-    if (switch_value == NULL) {
-        int temp_switch = -1;
-        snd_mixer_selem_get_playback_switch(fpe, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
-        return temp_switch;
-    }
-    snd_mixer_selem_get_playback_switch(fpe, SND_MIXER_SCHN_FRONT_LEFT, switch_value);
-    /* TODO: return false if above failed. */
-    return true;
+    int temp_switch = -1;
+    snd_mixer_selem_get_playback_switch(FRONT_PANEL.element, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
+    return temp_switch;
 }
 
 
@@ -378,9 +368,10 @@ int main(const int argc, const char* argv[])
 
     /* Create needed variables */
     snd_mixer_t* handle = get_handle();
-    snd_mixer_elem_t* elem = get_elem(handle, ELEMENT_TO_CONTROL);
+    MASTER.element = get_elem(handle, MASTER.element_name);
+    FRONT_PANEL.element = get_elem(handle, FRONT_PANEL.element_name);
     long int min, max; /* current volume range */
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+    snd_mixer_selem_get_playback_volume_range(MASTER.element, &min, &max);
     long int percent_vol = -1; /* current % volume */
     sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
 
@@ -388,23 +379,21 @@ int main(const int argc, const char* argv[])
      * TODO: set new vol first only if toggling fp off */
     if (cmd_opt.toggle_fp) {
 
-        snd_mixer_elem_t* front_panel_elem = NULL;
-        int switch_value = -1;
-        get_mixer_front_panel_switch(handle, &front_panel_elem, &switch_value);
+        bool is_switch_on = get_mixer_front_panel_switch();
 
         /* If toggling off the front panel */
-        if (switch_value) {
+        if (is_switch_on) {
             /* Set default volume if no new volume given and only if current
              * volume is higher than the default volume. (This is done before
              * setting the front panel off to avoid volume spike) */
-            if (SET_DEFAULT_VOL_WHEN_FP_OFF &&
+            if (MASTER.set_default_volume &&
                     cmd_opt.new_vol == INT_MAX) {
-                get_vol_0_100(elem, &min, &max, &percent_vol);
-                if (percent_vol > DEFAULT_VOL) set_vol(elem, DEFAULT_VOL, true);
+                get_vol_0_100(MASTER.element, &min, &max, &percent_vol);
+                if (percent_vol > MASTER.default_volume) set_vol(MASTER.element, MASTER.default_volume, true);
             }
             /* Check volume limit if setting new volume */
-            else if (SET_HIGH_VOLUME_WARNING &&
-                    cmd_opt.new_vol > WARNING_VOL) {
+            else if (MASTER.confirm_exeeding_volume_limit &&
+                    cmd_opt.new_vol > MASTER.soft_limit_volume) {
                 printf("Are you sure you want to set the main volume to %i? [N/y]: ",
                         cmd_opt.new_vol);
                 if (fgetc(stdin) != 'y')
@@ -412,12 +401,12 @@ int main(const int argc, const char* argv[])
             }
         }
         else {
-            if (SET_DEFAULT_FP_VOL_WHEN_FP_ON)
-                set_vol(elem, DEFAULT_FP_VOL, true);
+            if (FRONT_PANEL.set_default_volume)
+                set_vol(MASTER.element, FRONT_PANEL.default_volume, true);
         }
 
         /* Toggle the front panel */
-        int err = snd_mixer_selem_set_playback_switch_all(front_panel_elem, !switch_value);
+        int err = snd_mixer_selem_set_playback_switch_all(FRONT_PANEL.element, !is_switch_on);
 
         /* Exit if nothing else to do */
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
@@ -428,18 +417,18 @@ int main(const int argc, const char* argv[])
         if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
 
         if (cmd_opt.toggle) {
-            toggle_volume(elem, cmd_opt.new_vol, min);
+            toggle_volume(&MASTER, cmd_opt.new_vol, min);
         } else {
             /* change absolute and relative volumes */
             /* first check if relative volume */
             if (cmd_opt.inc || cmd_opt.new_vol < 0) {
                 if (cmd_opt.new_vol != 0) {
                     long int current_vol = -1;
-                    get_vol(elem, &current_vol);
-                    set_vol(elem, current_vol + cmd_opt.new_vol, false);
+                    get_vol(MASTER.element, &current_vol);
+                    set_vol(MASTER.element, current_vol + cmd_opt.new_vol, false);
                 }
             } else {
-                set_vol(elem, cmd_opt.new_vol, true);
+                set_vol(MASTER.element, cmd_opt.new_vol, true);
             }
         }
 
@@ -447,14 +436,14 @@ int main(const int argc, const char* argv[])
     } else {
         /* default action: get % volumes */
         if (percent_vol < 0) {
-            get_vol(elem, &percent_vol);
+            get_vol(MASTER.element, &percent_vol);
             change_range(&percent_vol, min, max, 0, 100);
         }
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)
             printf(" Front panel: %s",
-                    get_mixer_front_panel_switch(handle, NULL, NULL) ? "on" : "off");
+                    get_mixer_front_panel_switch() ? "on" : "off");
         printf("\n");
     }
 
