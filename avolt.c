@@ -277,7 +277,10 @@ void print_config(FILE* output)
 
 
 /* Reads cmd_line options to given options struct variable */
-bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt)
+bool read_cmd_line_options(
+        const int argc,
+        const char** argv,
+        struct cmd_options* cmd_opt)
 {
     const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf] [-v]"
         "\n\n"
@@ -399,7 +402,8 @@ int main(const int argc, const char* argv[])
             /* Check volume limit if setting new volume */
             else if (SET_HIGH_VOLUME_WARNING &&
                     cmd_opt.new_vol > WARNING_VOL) {
-                printf("Are you sure you want to set the main volume to %i? [N/y]: ", cmd_opt.new_vol);
+                printf("Are you sure you want to set the main volume to %i? [N/y]: ",
+                        cmd_opt.new_vol);
                 if (fgetc(stdin) != 'y')
                     cmd_opt.new_vol = INT_MAX;
             }
@@ -446,7 +450,8 @@ int main(const int argc, const char* argv[])
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)
-            printf(" Front panel: %s", get_mixer_front_panel_switch(handle, NULL, NULL) ? "on" : "off");
+            printf(" Front panel: %s",
+                    get_mixer_front_panel_switch(handle, NULL, NULL) ? "on" : "off");
         printf("\n");
     }
 
