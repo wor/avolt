@@ -33,6 +33,7 @@ struct cmd_options
     unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
     bool toggle_fp; // Toggle front panel
     bool inc; // Do we increase volume
+    int verbose_level; // Verbosity level
 };
 
 
@@ -248,6 +249,7 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
     }
 }
 
+
 /* Print information to given FILE* about statically set config options. */
 void print_config(FILE* output)
 {
@@ -277,9 +279,10 @@ void print_config(FILE* output)
 /* Reads cmd_line options to given options struct variable */
 bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options* cmd_opt)
 {
-    const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf]"
+    const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf] [-v]"
         "\n\n"
         "Option help:\n"
+        "v:\tBe more verbose.\n"
         "s:\tSet volume.\n"
         "t:\tToggle volume.\n"
         "tf:\tToggle front panel.\n";
@@ -287,6 +290,11 @@ bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
             get_vol_from_arg(argv[++i], &cmd_opt->new_vol, &cmd_opt->inc);
+        } else if (strcmp(argv[i], "-s") == 0) {
+            // TODO: set default volume
+            ;
+        } else if (strcmp(argv[i], "-v") == 0) {
+            cmd_opt->verbose_level++;
         } else if (strcmp(argv[i], "-t") == 0) {
             cmd_opt->toggle = 1;
         } else if (strcmp(argv[i], "-tf") == 0) {
@@ -308,6 +316,43 @@ bool read_cmd_line_options(const int argc, const char** argv, struct cmd_options
 }
 
 
+/* Gets mixer front panels switch value (on/off).
+ * Returns TODO. */
+bool get_mixer_front_panel_switch(
+        const snd_mixer_t* mixer_handle,
+        snd_mixer_elem_t** front_panel_elem,
+        int* switch_value)
+{
+    /* TODO: How to check if front panel exits at all?
+     * snd_mixer_selem_has_playback_switch(front_panel_elem) */
+    assert(mixer_handle);
+
+    snd_mixer_elem_t* fpe = NULL;
+
+    /* TODO: refactor and comment */
+    if (!front_panel_elem) {
+        fpe = get_elem(mixer_handle, "Front Panel");
+    }
+    else if (*front_panel_elem == NULL) {
+        fpe = get_elem(mixer_handle, "Front Panel");
+        *front_panel_elem = fpe;
+    }
+    else {
+        fpe = *front_panel_elem;
+    }
+
+    /* If no switch value given return switch state */
+    if (switch_value == NULL) {
+        int temp_switch = -1;
+        snd_mixer_selem_get_playback_switch(fpe, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
+        return temp_switch;
+    }
+    snd_mixer_selem_get_playback_switch(fpe, SND_MIXER_SCHN_FRONT_LEFT, switch_value);
+    /* TODO: return false if above failed. */
+    return true;
+}
+
+
 /*****************************************************************************
  * Main function
  * */
@@ -318,7 +363,8 @@ int main(const int argc, const char* argv[])
         .new_vol = INT_MAX,
         .toggle = 0,
         .toggle_fp = false,
-        .inc = false
+        .inc = false,
+        .verbose_level = 0
     };
 
     /* Read parameters to cmd_opt */
@@ -336,13 +382,9 @@ int main(const int argc, const char* argv[])
      * TODO: set new vol first only if toggling fp off */
     if (cmd_opt.toggle_fp) {
 
-        snd_mixer_elem_t* front_panel_elem = get_elem(handle, "Front Panel");
-
-        /* TODO: How to check if front panel exits at all?
-         * snd_mixer_selem_has_playback_switch(front_panel_elem) */
-
+        snd_mixer_elem_t* front_panel_elem = NULL;
         int switch_value = -1;
-        snd_mixer_selem_get_playback_switch(front_panel_elem, SND_MIXER_SCHN_FRONT_LEFT, &switch_value);
+        get_mixer_front_panel_switch(handle, &front_panel_elem, &switch_value);
 
         /* If toggling off the front panel */
         if (switch_value) {
@@ -401,7 +443,11 @@ int main(const int argc, const char* argv[])
             get_vol(elem, &percent_vol);
             change_range(&percent_vol, min, max, 0, 100);
         }
-        printf("%li\n", percent_vol);
+
+        printf("%li", percent_vol);
+        if (cmd_opt.verbose_level > 0)
+            printf(" Front panel: %s", get_mixer_front_panel_switch(handle, NULL, NULL) ? "on" : "off");
+        printf("\n");
     }
 
     return 0;
