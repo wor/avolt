@@ -257,6 +257,9 @@ void print_config(FILE* output)
     fprintf(output,
             "The alsa element to control by default is: %s\n",
             ELEMENT_TO_CONTROL);
+    fprintf(output,
+            "The alsa front panel element to control by default is: %s\n",
+            FP_ELEMENT_TO_CONTROL);
     if (SET_DEFAULT_VOL_WHEN_FP_OFF)
         fprintf(output,
                 "When front panel is toggled off, default volume which is set "
@@ -322,7 +325,7 @@ bool read_cmd_line_options(
 /* Gets mixer front panels switch value (on/off).
  * Returns TODO. */
 bool get_mixer_front_panel_switch(
-        const snd_mixer_t* mixer_handle,
+        snd_mixer_t* mixer_handle,
         snd_mixer_elem_t** front_panel_elem,
         int* switch_value)
 {
@@ -334,10 +337,10 @@ bool get_mixer_front_panel_switch(
 
     /* TODO: refactor and comment */
     if (!front_panel_elem) {
-        fpe = get_elem(mixer_handle, "Front Panel");
+        fpe = get_elem(mixer_handle, FP_ELEMENT_TO_CONTROL);
     }
     else if (*front_panel_elem == NULL) {
-        fpe = get_elem(mixer_handle, "Front Panel");
+        fpe = get_elem(mixer_handle, FP_ELEMENT_TO_CONTROL);
         *front_panel_elem = fpe;
     }
     else {
