@@ -408,6 +408,9 @@ int main(const int argc, const char* argv[])
         /* Toggle the front panel */
         int err = snd_mixer_selem_set_playback_switch_all(FRONT_PANEL.element, !is_switch_on);
 
+        if (cmd_opt.verbose_level > 0 && !err)
+            printf("Front panel: %s\n", is_switch_on ? "off" : "on");
+
         /* Exit if nothing else to do */
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
     }
