@@ -69,6 +69,11 @@ static bool read_cmd_line_options(
         const char** argv,
         struct cmd_options* cmd_opt);
 static bool get_mixer_front_panel_switch();
+static void print_profile(
+        struct mixer_element_conf const* profile,
+        char const* indent,
+        FILE* output);
+static void print_config(FILE* output);
 
 
 /* Get alsa handle */
@@ -253,6 +258,32 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 }
 
 
+/* Print volume profile info */
+void print_profile(
+        struct mixer_element_conf const* profile,
+        char const* indent,
+        FILE* output)
+{
+    fprintf(output,
+            "%sName: %s\n"
+            "%s%sDefault volume: %i\n"
+            "%s%sSoft limit volume: %i\n"
+            "%s%sSet default volume: %i\n"
+            "%s%sConfirm soft volume limit exceeding: %i\n",
+            indent,
+            profile->element_name,
+            indent, indent,
+            profile->default_volume,
+            indent, indent,
+            profile->soft_limit_volume,
+            indent, indent,
+            profile->set_default_volume,
+            indent, indent,
+            profile->confirm_exeeding_volume_limit
+           );
+}
+
+
 /* Print information to given FILE* about statically set config options. */
 void print_config(FILE* output)
 {
@@ -270,23 +301,7 @@ void print_config(FILE* output)
         sizeof(struct mixer_element_conf*);
     const char* indent = "  ";
     for (int i = 0; i < mixer_elements_size; ++i) {
-        fprintf(output,
-                "%sName: %s\n"
-                "%s%sDefault volume: %i\n"
-                "%s%sSoft limit volume: %i\n"
-                "%s%sSet default volume: %i\n"
-                "%s%sConfirm soft volume limit exceeding: %i\n",
-                indent,
-                MIXER_ELEMENTS[i]->element_name,
-                indent, indent,
-                MIXER_ELEMENTS[i]->default_volume,
-                indent, indent,
-                MIXER_ELEMENTS[i]->soft_limit_volume,
-                indent, indent,
-                MIXER_ELEMENTS[i]->set_default_volume,
-                indent, indent,
-                MIXER_ELEMENTS[i]->confirm_exeeding_volume_limit
-                );
+        print_profile(MIXER_ELEMENTS[i], indent, output);
     }
     if (USE_SEMAPHORE)
         fprintf(output,
@@ -411,8 +426,16 @@ int main(const int argc, const char* argv[])
         /* Toggle the front panel */
         int err = snd_mixer_selem_set_playback_switch_all(FRONT_PANEL.element, !is_switch_on);
 
-        if (cmd_opt.verbose_level > 0 && !err)
-            printf("Front panel: %s\n", is_switch_on ? "off" : "on");
+        if (!err) {
+            if (cmd_opt.verbose_level > 0)
+                printf("Front panel: %s\n", is_switch_on ? "off" : "on");
+            if (cmd_opt.verbose_level > 1) {
+                if (get_mixer_front_panel_switch())
+                    print_profile(&FRONT_PANEL, "", stdout);
+                else
+                    print_profile(&MASTER, "", stdout);
+            }
+        }
 
         /* Exit if nothing else to do */
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
@@ -460,6 +483,12 @@ int main(const int argc, const char* argv[])
             printf(" Front panel: %s",
                     get_mixer_front_panel_switch() ? "on" : "off");
         printf("\n");
+        if (cmd_opt.verbose_level > 1) {
+            if (get_mixer_front_panel_switch())
+                print_profile(&FRONT_PANEL, "", stdout);
+            else
+                print_profile(&MASTER, "", stdout);
+        }
     }
 
     return 0;
