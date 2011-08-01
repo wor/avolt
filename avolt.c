@@ -30,6 +30,7 @@
 /* Command line options */
 struct cmd_options
 {
+    bool set_default_vol; // Set the default volume
     int new_vol; // Set volume to this
     unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
     bool toggle_fp; // Toggle front panel
@@ -312,8 +313,8 @@ bool read_cmd_line_options(
         if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
             get_vol_from_arg(argv[++i], &cmd_opt->new_vol, &cmd_opt->inc);
         } else if (strcmp(argv[i], "-s") == 0) {
-            // TODO: set default volume
-            ;
+            /* If "-s" with no volume given set the default volume */
+             cmd_opt->set_default_vol = true;
         } else if (strcmp(argv[i], "-v") == 0) {
             cmd_opt->verbose_level++;
         } else if (strcmp(argv[i], "-t") == 0) {
@@ -356,6 +357,7 @@ int main(const int argc, const char* argv[])
 {
     /* Init command line options instance */
     struct cmd_options cmd_opt = {
+        .set_default_vol = false,
         .new_vol = INT_MAX,
         .toggle = 0,
         .toggle_fp = false,
@@ -415,11 +417,19 @@ int main(const int argc, const char* argv[])
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
     }
 
-    /* If new volume given or toggle volume */
-    if (cmd_opt.new_vol != INT_MAX || cmd_opt.toggle) {
+    /* If new volume given or toggle volume, or set default volume */
+    if (cmd_opt.new_vol != INT_MAX ||
+            cmd_opt.toggle ||
+            cmd_opt.set_default_vol) {
+
         if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
 
-        if (cmd_opt.toggle) {
+        if (cmd_opt.set_default_vol) {
+            if (get_mixer_front_panel_switch())
+                set_vol(MASTER.element, FRONT_PANEL.default_volume, true);
+            else
+                set_vol(MASTER.element, MASTER.default_volume, true);
+        } else if (cmd_opt.toggle) {
             toggle_volume(&MASTER, cmd_opt.new_vol, min);
         } else {
             /* change absolute and relative volumes */
