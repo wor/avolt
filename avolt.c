@@ -377,6 +377,7 @@ int main(const int argc, const char* argv[])
     long int percent_vol = -1; /* current % volume */
     sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
 
+    /* First do possible profile change */
     /* Toggle the front panel
      * TODO: set new vol first only if toggling fp off */
     if (cmd_opt.toggle_fp) {
@@ -417,6 +418,7 @@ int main(const int argc, const char* argv[])
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
     }
 
+    /* Second do possible volume change */
     /* If new volume given or toggle volume, or set default volume */
     if (cmd_opt.new_vol != INT_MAX ||
             cmd_opt.toggle ||
