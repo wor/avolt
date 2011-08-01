@@ -327,7 +327,7 @@ bool read_cmd_line_options(
                     !(cmd_opt->new_vol != 0
                         && cmd_opt->new_vol != INT_MAX
                         && cmd_opt->new_vol != INT_MIN)) {
-                fprintf(stderr, "avolt - v %s: %s %s\n",
+                fprintf(stderr, "avolt - v%s: %s %s\n",
                         VERSION, argv[0], input_help);
                 print_config(stderr);
                 return false;
