@@ -26,14 +26,15 @@
 #include <semaphore.h>
 
 #include "avolt.conf"
+#include "wutil.h"
 
 /* Command line options */
 struct cmd_options
 {
     bool set_default_vol; // Set the default volume
     int new_vol; // Set volume to this
-    unsigned int toggle; // Toggle volume 0 <-> default_toggle_vol
-    bool toggle_fp; // Toggle front panel
+    unsigned int toggle_vol; // Toggle volume 0 <-> default_toggle_vol
+    bool toggle_output; // Toggle output
     bool inc; // Do we increase volume
     int verbose_level; // Verbosity level
 };
@@ -59,7 +60,7 @@ static void set_vol(
         long int new_vol,
         bool const change_range);
 static void toggle_volume(
-        struct mixer_element_conf* element_conf,
+        struct sound_profile* sp,
         long int const new_vol,
         long int const min);
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
@@ -70,10 +71,11 @@ static bool read_cmd_line_options(
         struct cmd_options* cmd_opt);
 static bool get_mixer_front_panel_switch();
 static void print_profile(
-        struct mixer_element_conf const* profile,
+        struct sound_profile const* profile,
         char const* indent,
         FILE* output);
 static void print_config(FILE* output);
+static void init_sound_profiles(snd_mixer_t* handle);
 
 
 /* Get alsa handle */
@@ -97,7 +99,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
     snd_mixer_elem_t* elem = NULL;
 
-    /* get snd_mixer_elem_t pointer, corresponding MASTER.element_name */
+    /* get snd_mixer_elem_t pointer, corresponding DEFAULT.volume_cntrl_mixer_element_name */
     snd_mixer_elem_t* var = snd_mixer_first_elem(handle);
     while (var != NULL) {
         if (strcasecmp(name, snd_mixer_selem_get_name(var)) == 0) {
@@ -131,7 +133,14 @@ void get_vol_0_100(
         long int* percent_vol)
 {
         get_vol(elem, percent_vol);
-        change_range(percent_vol, *min, *max, 0, 100);
+
+        if (!min || !max) {
+            long int min, max;
+            snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+            change_range(percent_vol, min, max, 0, 100);
+        } else {
+            change_range(percent_vol, *min, *max, 0, 100);
+        }
 }
 
 
@@ -225,20 +234,20 @@ bool check_semaphore(sem_t** sem)
 
 /* volume toggler between 0 <--> element default volume */
 void toggle_volume(
-        struct mixer_element_conf* element_conf,
+        struct sound_profile* sp,
         long int const new_vol,
         long int const min)
 {
     long int current_vol;
-    get_vol(MASTER.element, &current_vol);
+    get_vol(DEFAULT.volume_cntrl_mixer_element, &current_vol);
     if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(MASTER.element, new_vol, true);
+            set_vol(DEFAULT.volume_cntrl_mixer_element, new_vol, true);
         else
-            set_vol(MASTER.element, element_conf->default_volume, true);
+            set_vol(DEFAULT.volume_cntrl_mixer_element, sp->default_volume, true);
     }
     else {
-        set_vol(MASTER.element, 0, true);
+        set_vol(DEFAULT.volume_cntrl_mixer_element, 0, true);
     }
     return;
 }
@@ -260,18 +269,26 @@ void get_vol_from_arg(const char* arg, int* new_vol, bool* inc)
 
 /* Print volume profile info */
 void print_profile(
-        struct mixer_element_conf const* profile,
+        struct sound_profile const* profile,
         char const* indent,
         FILE* output)
 {
+    //snd_mixer_selem_get_name()
     fprintf(output,
             "%sName: %s\n"
+            "%s%sMixer element name: %s\n"
+            "%s%sVolume control mixer element name: %s\n"
             "%s%sDefault volume: %i\n"
             "%s%sSoft limit volume: %i\n"
             "%s%sSet default volume: %i\n"
             "%s%sConfirm soft volume limit exceeding: %i\n",
             indent,
-            profile->element_name,
+            profile->profile_name,
+            indent, indent,
+            profile->mixer_element_name,
+            indent, indent,
+            (profile->volume_cntrl_mixer_element_name ?
+            profile->volume_cntrl_mixer_element_name : "Same as mixer element."),
             indent, indent,
             profile->default_volume,
             indent, indent,
@@ -288,20 +305,14 @@ void print_profile(
 void print_config(FILE* output)
 {
     fprintf(output, "Static option help:\n");
-    fprintf(output,
-            "The alsa element to control by default is: %s\n",
-            MASTER.element_name);
-    fprintf(output,
-            "The alsa front panel element to control by default is: %s\n",
-            FRONT_PANEL.element_name);
+    fprintf(output, "The default profile which is used is named default.\n");
+    // TODO: list toggle output array
 
     fprintf(output,
-            "Mixer element settings:\n");
-    const int mixer_elements_size = sizeof(MIXER_ELEMENTS) /
-        sizeof(struct mixer_element_conf*);
+            "Sound profiles:\n");
     const char* indent = "  ";
-    for (int i = 0; i < mixer_elements_size; ++i) {
-        print_profile(MIXER_ELEMENTS[i], indent, output);
+    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        print_profile(SOUND_PROFILES[i], indent, output);
     }
     if (USE_SEMAPHORE)
         fprintf(output,
@@ -316,13 +327,13 @@ bool read_cmd_line_options(
         const char** argv,
         struct cmd_options* cmd_opt)
 {
-    const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-tf] [-v]"
+    const char* input_help = "[[-s] [+|-]<volume>]] [-t] [-to] [-v]"
         "\n\n"
         "Option help:\n"
         "v:\tBe more verbose.\n"
         "s:\tSet volume.\n"
         "t:\tToggle volume.\n"
-        "tf:\tToggle front panel.\n";
+        "to:\tToggle output.\n";
 
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-s") == 0) && (i+1 < argc)) {
@@ -333,9 +344,9 @@ bool read_cmd_line_options(
         } else if (strcmp(argv[i], "-v") == 0) {
             cmd_opt->verbose_level++;
         } else if (strcmp(argv[i], "-t") == 0) {
-            cmd_opt->toggle = 1;
-        } else if (strcmp(argv[i], "-tf") == 0) {
-            cmd_opt->toggle_fp = true;
+            cmd_opt->toggle_vol = 1;
+        } else if (strcmp(argv[i], "-to") == 0) {
+            cmd_opt->toggle_output = true;
         } else {
             get_vol_from_arg(argv[i], &cmd_opt->new_vol, &cmd_opt->inc);
             if (strcmp(argv[i], "0") != 0 &&
@@ -344,6 +355,8 @@ bool read_cmd_line_options(
                         && cmd_opt->new_vol != INT_MIN)) {
                 fprintf(stderr, "avolt - v%s: %s %s\n",
                         VERSION, argv[0], input_help);
+                //snd_mixer_t* handle = get_handle();
+                //init_sound_profiles(handle);
                 print_config(stderr);
                 return false;
             }
@@ -353,17 +366,129 @@ bool read_cmd_line_options(
 }
 
 
+bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem)
+{
+    /* XXX: Could assert that snd_mixer_selem_has_playback_switch(elem) */
+    int temp_switch = -1;
+    snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
+    return temp_switch;
+}
+
+
 /* Gets mixer front panels switch value (on/off).
  * Returns true for "on" and false for "off". */
 bool get_mixer_front_panel_switch()
 {
-    /* XXX: If to be generalized check that element has playback switch:
-     * snd_mixer_selem_has_playback_switch(front_panel_elem) */
-    int temp_switch = -1;
-    snd_mixer_selem_get_playback_switch(FRONT_PANEL.element, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
-    return temp_switch;
+    return is_mixer_elem_playback_switch_on(FRONT_PANEL.mixer_element);
 }
 
+
+/* Initializes all sound profiles from SOUND_PROFILES array */
+void init_sound_profiles(snd_mixer_t* handle)
+{
+    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
+        if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name)
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element = get_elem(handle, SOUND_PROFILES[i]->volume_cntrl_mixer_element_name);
+        else {
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element_name = SOUND_PROFILES[i]->mixer_element_name;
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element = SOUND_PROFILES[i]->mixer_element;
+        }
+    }
+}
+
+
+/* Get's current sound profile in use */
+struct sound_profile* get_current_sound_profile()
+{
+    struct sound_profile* current = NULL;
+    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        snd_mixer_elem_t* e = SOUND_PROFILES[i]->mixer_element;
+        if (snd_mixer_selem_has_playback_switch(e) &&
+                is_mixer_elem_playback_switch_on(e)) {
+            if (!current || (
+                        strcmp(SOUND_PROFILES[i]->volume_cntrl_mixer_element_name, SOUND_PROFILES[i]->mixer_element_name) != 0 &&
+                        is_mixer_elem_playback_switch_on(SOUND_PROFILES[i]->volume_cntrl_mixer_element)))
+                    current = SOUND_PROFILES[i];
+        }
+    }
+
+    assert(current);
+    return current;
+}
+
+
+/* Gets target sound profile from TOGGLE_SOUND_PROFILES array */
+struct sound_profile* get_target_sound_profile(struct sound_profile* current)
+{
+    struct sound_profile* target = NULL;
+    for (int i = 0; i < TOGGLE_SOUND_PROFILES_SIZE; ++i) {
+        snd_mixer_elem_t* e = TOGGLE_SOUND_PROFILES[i]->mixer_element;
+        if (strcasecmp(snd_mixer_selem_get_name(current->mixer_element),
+                snd_mixer_selem_get_name(e)) == 0) {
+            target = i+1 < TOGGLE_SOUND_PROFILES_SIZE ? TOGGLE_SOUND_PROFILES[i+1] : TOGGLE_SOUND_PROFILES[0];
+        }
+    }
+
+    assert(target);
+    return target;
+}
+
+
+
+/* Print info about existing mixer elements */
+void list_mixer_elements(snd_mixer_t* handle)
+{
+    snd_mixer_elem_t* elem = snd_mixer_first_elem(handle);
+    for (int i = 1; elem != NULL; ++i) {
+        printf("%i. Element name: %s\n", i, snd_mixer_selem_get_name(elem));
+        if (snd_mixer_selem_has_playback_switch(elem))
+            printf("  Element has playback switch.\n");
+        elem = snd_mixer_elem_next(elem);
+    }
+}
+
+
+/* Set new volume from */
+bool set_new_volume(
+        struct sound_profile* sp,
+        int new_vol,
+        bool relative_inc,
+        bool set_default_vol,
+        bool toggle_vol)
+{
+    sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
+    if (USE_SEMAPHORE && !check_semaphore(&sem)) return false;
+
+    /* Get given profile volume range */
+    long int min, max;
+    snd_mixer_selem_get_playback_volume_range(sp->volume_cntrl_mixer_element, &min, &max);
+
+    if (set_default_vol) {
+        // Set default volume
+        set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, true);
+    } else if (toggle_vol) {
+        // toggle volume
+        toggle_volume(sp, new_vol, min);
+    } else {
+        /* Change absolute and relative volumes */
+
+        /* First check if relative volume */
+        if (relative_inc || new_vol < 0) {
+            pd("Relative vol inc...\n");
+            if (new_vol != 0) {
+                long int current_vol = -1;
+                get_vol(sp->volume_cntrl_mixer_element, &current_vol);
+                set_vol(sp->volume_cntrl_mixer_element, current_vol + new_vol, false);
+            }
+        } else {
+            set_vol(sp->volume_cntrl_mixer_element, new_vol, true);
+        }
+    }
+
+    if (USE_SEMAPHORE && !check_semaphore(&sem)) return false;
+    return true;
+}
 
 /*****************************************************************************
  * Main function
@@ -374,109 +499,132 @@ int main(const int argc, const char* argv[])
     struct cmd_options cmd_opt = {
         .set_default_vol = false,
         .new_vol = INT_MAX,
-        .toggle = 0,
-        .toggle_fp = false,
+        .toggle_vol = 0,
+        .toggle_output = false,
         .inc = false,
         .verbose_level = 0
     };
+
 
     /* Read parameters to cmd_opt */
     if (!read_cmd_line_options(argc, argv, &cmd_opt)) return 1;
 
     /* Create needed variables */
     snd_mixer_t* handle = get_handle();
-    MASTER.element = get_elem(handle, MASTER.element_name);
-    FRONT_PANEL.element = get_elem(handle, FRONT_PANEL.element_name);
-    long int min, max; /* current volume range */
-    snd_mixer_selem_get_playback_volume_range(MASTER.element, &min, &max);
-    long int percent_vol = -1; /* current % volume */
-    sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
+    init_sound_profiles(handle);
 
-    /* First do possible profile change */
-    /* Toggle the front panel
-     * TODO: set new vol first only if toggling fp off */
-    if (cmd_opt.toggle_fp) {
+    /* list_mixer_elements(handle); // DEBUG */
 
-        bool is_switch_on = get_mixer_front_panel_switch();
+    /* First we must determine witch profile is "on" */
+    struct sound_profile* current_sp = get_current_sound_profile();
+    //snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
 
-        /* If toggling off the front panel */
-        if (is_switch_on) {
-            /* Set default volume if no new volume given and only if current
-             * volume is higher than the default volume. (This is done before
-             * setting the front panel off to avoid volume spike) */
-            if (MASTER.set_default_volume &&
-                    cmd_opt.new_vol == INT_MAX) {
-                get_vol_0_100(MASTER.element, &min, &max, &percent_vol);
-                if (percent_vol > MASTER.default_volume) set_vol(MASTER.element, MASTER.default_volume, true);
-            }
-            /* Check volume limit if setting new volume */
-            else if (MASTER.confirm_exeeding_volume_limit &&
-                    cmd_opt.new_vol > MASTER.soft_limit_volume) {
-                printf("Are you sure you want to set the main volume to %i? [N/y]: ",
-                        cmd_opt.new_vol);
-                if (fgetc(stdin) != 'y')
-                    cmd_opt.new_vol = INT_MAX;
-            }
-        }
-        else {
-            if (FRONT_PANEL.set_default_volume)
-                set_vol(MASTER.element, FRONT_PANEL.default_volume, true);
+    /* First do possible output profile change */
+    if (cmd_opt.toggle_output) {
+        pd("Toggling the output.\n");
+
+        struct sound_profile* target_sp = get_target_sound_profile(current_sp);
+
+        long int current_percent_vol = -1;
+        get_vol_0_100(current_sp->volume_cntrl_mixer_element, NULL, NULL, &current_percent_vol);
+
+        /* Check if default volume is to be set */
+        if (target_sp->set_default_volume &&
+                cmd_opt.new_vol == INT_MAX &&
+                target_sp->default_volume != current_percent_vol) {
+            pd("Setting the default volume.\n");
+            cmd_opt.new_vol = target_sp->default_volume;
         }
 
-        /* Toggle the front panel */
-        int err = snd_mixer_selem_set_playback_switch_all(FRONT_PANEL.element, !is_switch_on);
+        if (cmd_opt.new_vol == INT_MAX &&
+                target_sp->default_volume != current_percent_vol &&
+                !target_sp->set_default_volume) {
+            int adjustment = target_sp->default_volume - current_sp->default_volume;
+            pd("Setting relative volume: adjustment %i, to def %i, from def %i.\n", adjustment,
+                    target_sp->default_volume, current_sp->default_volume);
+            if (adjustment > 0) cmd_opt.inc = true;
+            if (adjustment != 0) cmd_opt.new_vol = adjustment;
+        }
 
+        /* Check volume limit if setting new volume */
+        else if (target_sp->confirm_exeeding_volume_limit &&
+                cmd_opt.new_vol > target_sp->soft_limit_volume) {
+            printf("Are you sure you want to set the main volume to %i? [N/y]: ",
+                    cmd_opt.new_vol);
+            if (fgetc(stdin) != 'y')
+                cmd_opt.new_vol = target_sp->default_volume;
+        }
+
+        /* Set volume now if early setting needed to avoid volume spikes */
+        if (current_percent_vol > cmd_opt.new_vol &&
+                current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) {
+
+            printf("DEBUG: PRE setting volume.\n");
+            // TODO: adjustment volume calculation wrong!
+            bool ret = set_new_volume(
+                    target_sp,
+                    cmd_opt.new_vol,
+                    cmd_opt.inc,
+                    cmd_opt.set_default_vol,
+                    cmd_opt.toggle_vol);
+            if (!ret) return 1;
+            cmd_opt.new_vol = INT_MAX;
+        }
+
+        /* Turn on/off the outputs */
+        int err;
+        // Check if target_sp has a dependency with current_sp
+        if (current_sp->mixer_element != target_sp->volume_cntrl_mixer_element) {
+            // If not switch current_sp off
+            printf("DEBUG: switching off element: %s\n", current_sp->mixer_element_name);
+            err = snd_mixer_selem_set_playback_switch_all(current_sp->mixer_element, false);
+            if (err) printf("Error occured when toggling off current_sp mixer_element named: %s\n", current_sp->mixer_element_name);
+        }
+
+        // Switch target's mixer element on
+        err = snd_mixer_selem_set_playback_switch_all(target_sp->mixer_element, true);
+        if (err) printf("Error occured when toggling off current_sp mixer_element named: %s\n", current_sp->mixer_element_name);
+
+        /* Print verbose info if no error occured while toggling playback switch */
         if (!err) {
             if (cmd_opt.verbose_level > 0)
-                printf("Front panel: %s\n", is_switch_on ? "off" : "on");
+                printf("Current profile: %s\n", target_sp->mixer_element_name);
             if (cmd_opt.verbose_level > 1) {
                 if (get_mixer_front_panel_switch())
                     print_profile(&FRONT_PANEL, "", stdout);
                 else
-                    print_profile(&MASTER, "", stdout);
+                    print_profile(&DEFAULT, "", stdout);
             }
         }
 
+        if (err) { printf("Errors occured while on/offing the output.\n"); return err; }
         /* Exit if nothing else to do */
-        if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle) return err;
+        if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle_vol) return err;
     }
 
     /* Second do possible volume change */
     /* If new volume given or toggle volume, or set default volume */
     if (cmd_opt.new_vol != INT_MAX ||
-            cmd_opt.toggle ||
+            cmd_opt.toggle_vol ||
             cmd_opt.set_default_vol) {
 
-        if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
-
-        if (cmd_opt.set_default_vol) {
-            if (get_mixer_front_panel_switch())
-                set_vol(MASTER.element, FRONT_PANEL.default_volume, true);
-            else
-                set_vol(MASTER.element, MASTER.default_volume, true);
-        } else if (cmd_opt.toggle) {
-            toggle_volume(&MASTER, cmd_opt.new_vol, min);
-        } else {
-            /* change absolute and relative volumes */
-            /* first check if relative volume */
-            if (cmd_opt.inc || cmd_opt.new_vol < 0) {
-                if (cmd_opt.new_vol != 0) {
-                    long int current_vol = -1;
-                    get_vol(MASTER.element, &current_vol);
-                    set_vol(MASTER.element, current_vol + cmd_opt.new_vol, false);
-                }
-            } else {
-                set_vol(MASTER.element, cmd_opt.new_vol, true);
-            }
-        }
-
-        if (USE_SEMAPHORE && !check_semaphore(&sem)) return 0;
+        bool ret = set_new_volume(
+                current_sp,
+                cmd_opt.new_vol,
+                cmd_opt.inc,
+                cmd_opt.set_default_vol,
+                cmd_opt.toggle_vol);
+        if (!ret) return 1;
     } else {
+
         /* default action: get % volumes */
-        if (percent_vol < 0) {
-            get_vol(MASTER.element, &percent_vol);
-            change_range(&percent_vol, min, max, 0, 100);
-        }
+        long int percent_vol = 0;
+        /* Get given profile volume range */
+        long int min, max;
+        snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
+
+        get_vol(current_sp->volume_cntrl_mixer_element, &percent_vol);
+        change_range(&percent_vol, min, max, 0, 100);
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)
@@ -487,7 +635,7 @@ int main(const int argc, const char* argv[])
             if (get_mixer_front_panel_switch())
                 print_profile(&FRONT_PANEL, "", stdout);
             else
-                print_profile(&MASTER, "", stdout);
+                print_profile(&DEFAULT, "", stdout);
         }
     }
 
