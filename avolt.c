@@ -54,7 +54,8 @@ static void change_range(
         int const r_f_min,
         int const r_f_max,
         int const r_t_min,
-        int const r_t_max);
+        int const r_t_max,
+        bool relative);
 static void set_vol(
         snd_mixer_elem_t* elem,
         long int new_vol,
@@ -62,7 +63,8 @@ static void set_vol(
 static void toggle_volume(
         struct sound_profile* sp,
         long int const new_vol,
-        long int const min);
+        long int const min,
+        bool change_to_native_range);
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 bool check_semaphore(sem_t** sem);
 static bool read_cmd_line_options(
@@ -137,9 +139,9 @@ void get_vol_0_100(
         if (!min || !max) {
             long int min, max;
             snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-            change_range(percent_vol, min, max, 0, 100);
+            change_range(percent_vol, min, max, 0, 100, false);
         } else {
-            change_range(percent_vol, *min, *max, 0, 100);
+            change_range(percent_vol, *min, *max, 0, 100, false);
         }
 }
 
@@ -150,6 +152,7 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
     int err = 0;
     long int min, max;
 
+    pd("set_vol: new_vol: %i, change_range: %i\n", new_vol, change_range);
     /* check input range */
     if (change_range) {
         if (new_vol < 0) {
@@ -182,14 +185,26 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
 
 
 /* changes range, from range -> to range
+ * relative: if num is increase or decrease relative to r_f_min.
  * TODO: if change is made to smaller range, round to resolution borders */
 void change_range(
         long int* num,
         int const r_f_min,
         int const r_f_max,
         int const r_t_min,
-        int const r_t_max)
+        int const r_t_max,
+        bool relative)
 {
+    /* Check that given number is in given from range */
+    bool was_negative = false;
+    if (*num < 0 && relative) {
+        was_negative = true;
+        *num = -*num;
+    }
+    assert((*num >= r_f_min && *num <= r_f_max) || (relative) || "Not in from range!");
+    pd("change_range: [%i, %i] -> [%i, %i]\n", r_f_min, r_f_max, r_t_min,
+            r_t_max);
+
     // shift
     *num = *num - r_f_min;
 
@@ -199,6 +214,14 @@ void change_range(
     // multiply and shift to the new range
     float f = ((float)*num * mul) + r_t_min;
     *num = (int)f;
+
+    if (relative) {
+        *num = *num - r_t_min;
+        if (was_negative) {
+            *num = -*num;
+        }
+    }
+    assert(*num >= r_t_min && *num <= r_t_max || (relative) || "Not in from range!");
 }
 
 
@@ -236,18 +259,19 @@ bool check_semaphore(sem_t** sem)
 void toggle_volume(
         struct sound_profile* sp,
         long int const new_vol,
-        long int const min)
+        long int const min, // min volume in native range
+        bool change_to_native_range)
 {
     long int current_vol;
-    get_vol(DEFAULT.volume_cntrl_mixer_element, &current_vol);
+    get_vol(sp->volume_cntrl_mixer_element, &current_vol);
     if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(DEFAULT.volume_cntrl_mixer_element, new_vol, true);
+            set_vol(sp->volume_cntrl_mixer_element, new_vol, change_to_native_range);
         else
-            set_vol(DEFAULT.volume_cntrl_mixer_element, sp->default_volume, true);
+            set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, true);
     }
     else {
-        set_vol(DEFAULT.volume_cntrl_mixer_element, 0, true);
+        set_vol(sp->volume_cntrl_mixer_element, 0, true);
     }
     return;
 }
@@ -449,14 +473,26 @@ void list_mixer_elements(snd_mixer_t* handle)
 }
 
 
-/* Set new volume from */
+/* Sets new volume, expects new_vol to be within [0,100] range. */
 bool set_new_volume(
         struct sound_profile* sp,
-        int new_vol,
+        long int new_vol,
         bool relative_inc,
         bool set_default_vol,
         bool toggle_vol)
 {
+    /* XXX: Checking new_vol limits */
+    if (relative_inc) {
+        if (new_vol < 0 || new_vol > 100) {
+            fprintf(stderr, "Cannot set volume which is not in range [0,100]: %li\n", new_vol);
+            return false;
+        }
+    } else if ((new_vol < -100 || new_vol > 100) && !set_default_vol) {
+        fprintf(stderr, "Cannot set volume which is not in range [-100,100]: %li\n", new_vol);
+        return false;
+    }
+    /* **************************** */
+
     sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
     if (USE_SEMAPHORE && !check_semaphore(&sem)) return false;
 
@@ -464,25 +500,43 @@ bool set_new_volume(
     long int min, max;
     snd_mixer_selem_get_playback_volume_range(sp->volume_cntrl_mixer_element, &min, &max);
 
+    /* Change new volume to native range */
+    pd("set_new_volume: new vol [-100,100] or relative: %li\n", new_vol);
+
     if (set_default_vol) {
-        // Set default volume
-        set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, true);
+        // Set default volume, default volume is in [0-100] range
+        const bool change_range = true;
+        set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, change_range);
     } else if (toggle_vol) {
         // toggle volume
-        toggle_volume(sp, new_vol, min);
+        change_range(&new_vol, 0, 100, min, max, false);
+        const bool change_range = false;
+        toggle_volume(sp, new_vol, min, change_range);
     } else {
         /* Change absolute and relative volumes */
 
         /* First check if relative volume */
         if (relative_inc || new_vol < 0) {
-            pd("Relative vol inc...\n");
+            pd("Relative vol change...\n");
             if (new_vol != 0) {
                 long int current_vol = -1;
+                pd("Changing new_vol %li range to [%i, %i]\n", new_vol, min,
+                        max);
+                if (new_vol > 0) {
+                    change_range(&new_vol, 0, 100, min, max, true);
+                } else {
+                    change_range(&new_vol, 0, 100, min, max, true);
+                }
+                pd("After chaning range new_vol: %li\n", new_vol);
+
+                const bool change_range = false;
                 get_vol(sp->volume_cntrl_mixer_element, &current_vol);
-                set_vol(sp->volume_cntrl_mixer_element, current_vol + new_vol, false);
+                //get_vol_0_100(sp->volume_cntrl_mixer_element, &min, &max, &current_vol);
+                set_vol(sp->volume_cntrl_mixer_element, current_vol + new_vol, change_range);
             }
         } else {
-            set_vol(sp->volume_cntrl_mixer_element, new_vol, true);
+            const bool change_range = true;
+            set_vol(sp->volume_cntrl_mixer_element, new_vol, change_range);
         }
     }
 
@@ -559,7 +613,7 @@ int main(const int argc, const char* argv[])
         if (current_percent_vol > cmd_opt.new_vol &&
                 current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) {
 
-            printf("DEBUG: PRE setting volume.\n");
+            printf("DEBUG: PRE setting volume: %i\n", cmd_opt.new_vol);
             // TODO: adjustment volume calculation wrong!
             bool ret = set_new_volume(
                     target_sp,
@@ -624,7 +678,7 @@ int main(const int argc, const char* argv[])
         snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
 
         get_vol(current_sp->volume_cntrl_mixer_element, &percent_vol);
-        change_range(&percent_vol, min, max, 0, 100);
+        change_range(&percent_vol, min, max, 0, 100, false);
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)
