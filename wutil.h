@@ -1,7 +1,7 @@
 // Header file for random c utility functions
 
 // Enable debug printing
-#define _DEBUG
+//#define _DEBUG
 
 #ifdef _DEBUG
 #define PD_M pd
