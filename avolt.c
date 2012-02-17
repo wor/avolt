@@ -15,7 +15,7 @@
  * */
 
 /* compile with:
- * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 avolt.c -o avolt
+ * [gcc|clang] $(pkg-config --cflags --libs alsa) -lm -std=c99 avolt.c -o avolt
  */
 
 // TODO: now only master volume is set.
@@ -198,6 +198,8 @@ bool read_cmd_line_options(
         } else if (strcmp(argv[i], "-t") == 0) {
             cmd_opt->toggle_vol = 1;
         } else if (strcmp(argv[i], "-to") == 0) {
+            cmd_opt->toggle_output = true;
+        } else if (strcmp(argv[i], "-tf") == 0) { // XXX: Depracated output toggling
             cmd_opt->toggle_output = true;
         } else {
             get_vol_from_arg(argv[i], &cmd_opt->new_vol, &cmd_opt->inc);
