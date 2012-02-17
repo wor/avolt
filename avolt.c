@@ -3,6 +3,12 @@
 
 /* Simple program to set/get/toggle alsa (Master) volume.
  *
+ * XXX: Now there's a issue that received alsa volumes both seem to be on
+ * logarithmic scale, (the db and the normal playback volume).
+ * So when setting volume you set the volume on 0-100 as percentage of the
+ * logarithmic volume. Meaning the perceived volume level increases faster on
+ * the high levels than the low.
+ *
  * TODO: save current volume and restore it if front panel toggling
  * fails.
  * TODO: check that front panel volume toggling works. 0<-->front panel default.
@@ -18,13 +24,11 @@
 #include <stdio.h>
 #include <strings.h>
 #include <unistd.h>   /* access */
-#include <limits.h>
+#include <limits.h>   /* INT_MAX and so on */
 #include <stdbool.h>
 
-/* For semaphores to prevent swamping alsa with multiple calls */
-#include <fcntl.h>    /* Defines O_* constants */
-#include <semaphore.h>
-
+#include "volume_change.h"
+#include "avolt.conf.h"
 #include "avolt.conf"
 #include "wutil.h"
 
@@ -41,37 +45,18 @@ struct cmd_options
 
 
 /* Function declarations */
-static void get_vol(snd_mixer_elem_t* elem, long int* vol);
-static void get_vol_0_100(
-        snd_mixer_elem_t* elem,
-        long int const* const min,
-        long int const* const max,
-        long int* percent_vol);
 static snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
 static snd_mixer_t* get_handle(void);
-static void change_range(
-        long int* num,
-        int const r_f_min,
-        int const r_f_max,
-        int const r_t_min,
-        int const r_t_max,
-        bool relative);
-static void set_vol(
-        snd_mixer_elem_t* elem,
-        long int new_vol,
-        bool const change_range);
-static void toggle_volume(
-        struct sound_profile* sp,
-        long int const new_vol,
-        long int const min,
-        bool change_to_native_range);
-static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
-bool check_semaphore(sem_t** sem);
 static bool read_cmd_line_options(
         const int argc,
         const char** argv,
         struct cmd_options* cmd_opt);
 static bool get_mixer_front_panel_switch();
+static bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem);
+static struct sound_profile* get_target_sound_profile(struct sound_profile* current);
+//static void list_mixer_elements(snd_mixer_t* handle); DEBUG func
+
+static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
 static void print_profile(
         struct sound_profile const* profile,
         char const* indent,
@@ -113,167 +98,6 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 
     assert(elem);
     return elem;
-}
-
-
-/* Gets mixer volume without changing range */
-void get_vol(snd_mixer_elem_t* elem, long int* vol)
-{
-    long int a, b;
-    snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &a);
-    snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, &b);
-
-    *vol = a >= b ? a : b;
-}
-
-
-/* get volume in % (0-100) range */
-void get_vol_0_100(
-        snd_mixer_elem_t* elem,
-        long int const* const min,
-        long int const* const max,
-        long int* percent_vol)
-{
-        get_vol(elem, percent_vol);
-
-        if (!min || !max) {
-            long int min, max;
-            snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-            change_range(percent_vol, min, max, 0, 100, false);
-        } else {
-            change_range(percent_vol, *min, *max, 0, 100, false);
-        }
-}
-
-
-/* set volume as in range % (0-100) or in native range if change_range is false */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, bool const change_range)
-{
-    int err = 0;
-    long int min, max;
-
-    pd("set_vol: new_vol: %i, change_range: %i\n", new_vol, change_range);
-    /* check input range */
-    if (change_range) {
-        if (new_vol < 0) {
-            new_vol = 0;
-        } else if (new_vol > 100) {
-            fprintf(stderr, "avolt ERROR: max volume exceeded > 100: %li\n", new_vol);
-            return;
-        }
-    } else {
-        err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-        if (err < 0) {
-            return;
-        }
-        if (new_vol > max || new_vol < min) {
-            fprintf(stderr, "avolt ERROR: new volume (%li) was not in range: %li <--> %li\n", new_vol, min, max);
-            return;
-        }
-    }
-
-    if (change_range) {
-        snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-        new_vol = min + (max - min) * new_vol / 100;
-    }
-    err = snd_mixer_selem_set_playback_volume_all(elem, new_vol);
-    if (err != 0) {
-        fprintf(stderr, "avolt ERROR: snd mixer set playback volume failed.\n");
-        return;
-    }
-}
-
-
-/* changes range, from range -> to range
- * relative: if num is increase or decrease relative to r_f_min.
- * TODO: if change is made to smaller range, round to resolution borders */
-void change_range(
-        long int* num,
-        int const r_f_min,
-        int const r_f_max,
-        int const r_t_min,
-        int const r_t_max,
-        bool relative)
-{
-    /* Check that given number is in given from range */
-    bool was_negative = false;
-    if (*num < 0 && relative) {
-        was_negative = true;
-        *num = -*num;
-    }
-    assert((*num >= r_f_min && *num <= r_f_max) || (relative) || "Not in from range!");
-    pd("change_range: [%i, %i] -> [%i, %i]\n", r_f_min, r_f_max, r_t_min,
-            r_t_max);
-
-    // shift
-    *num = *num - r_f_min;
-
-    // get multiplier
-    float mul = (float)(r_t_max - r_t_min)/(float)(r_f_max - r_f_min);
-
-    // multiply and shift to the new range
-    float f = ((float)*num * mul) + r_t_min;
-    *num = (int)f;
-
-    if (relative) {
-        *num = *num - r_t_min;
-        if (was_negative) {
-            *num = -*num;
-        }
-    }
-    assert(*num >= r_t_min && *num <= r_t_max || (relative) || "Not in from range!");
-}
-
-
-/* Checks semaphore preventing swamping alsa with multiple avolt instances */
-bool check_semaphore(sem_t** sem)
-{
-    if (!*sem) {
-        /* Note: the final permission depend on the umask (open(2)) */
-        *sem = sem_open("avolt", O_CREAT, 0660, 1);
-        if (*sem == SEM_FAILED) {
-            fprintf(stderr, "Avolt ERROR: Semaphore opening failed.\n");
-            fprintf(stderr, "%s\n", strerror(errno));
-            return false;
-        }
-        if (sem_wait(*sem) == -1) {
-            fprintf(stderr, "Avolt ERROR: Semaphore waiting (decrementing) failed.\n");
-            fprintf(stderr, "%s\n", strerror(errno));
-            return false;
-        }
-    }
-    else {
-        if (sem_post(*sem) == -1) {
-            fprintf(stderr, "Avolt ERROR: Semaphore posting (incrementing) failed.\n");
-            fprintf(stderr, "%s\n", strerror(errno));
-            return false;
-        }
-        sem_close(*sem);
-    }
-
-    return true;
-}
-
-
-/* volume toggler between 0 <--> element default volume */
-void toggle_volume(
-        struct sound_profile* sp,
-        long int const new_vol,
-        long int const min, // min volume in native range
-        bool change_to_native_range)
-{
-    long int current_vol;
-    get_vol(sp->volume_cntrl_mixer_element, &current_vol);
-    if (current_vol == min) {
-        if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(sp->volume_cntrl_mixer_element, new_vol, change_to_native_range);
-        else
-            set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, true);
-    }
-    else {
-        set_vol(sp->volume_cntrl_mixer_element, 0, true);
-    }
-    return;
 }
 
 
@@ -461,6 +285,7 @@ struct sound_profile* get_target_sound_profile(struct sound_profile* current)
 
 
 /* Print info about existing mixer elements */
+/*
 void list_mixer_elements(snd_mixer_t* handle)
 {
     snd_mixer_elem_t* elem = snd_mixer_first_elem(handle);
@@ -471,78 +296,8 @@ void list_mixer_elements(snd_mixer_t* handle)
         elem = snd_mixer_elem_next(elem);
     }
 }
+*/
 
-
-/* Sets new volume, expects new_vol to be within [0,100] range. */
-bool set_new_volume(
-        struct sound_profile* sp,
-        long int new_vol,
-        bool relative_inc,
-        bool set_default_vol,
-        bool toggle_vol)
-{
-    /* XXX: Checking new_vol limits */
-    if (relative_inc) {
-        if (new_vol < 0 || new_vol > 100) {
-            fprintf(stderr, "Cannot set volume which is not in range [0,100]: %li\n", new_vol);
-            return false;
-        }
-    } else if ((new_vol < -100 || new_vol > 100) && !set_default_vol) {
-        fprintf(stderr, "Cannot set volume which is not in range [-100,100]: %li\n", new_vol);
-        return false;
-    }
-    /* **************************** */
-
-    sem_t *sem = NULL; /* Semaphore which is used if USE_SEMAPHORE is true */
-    if (USE_SEMAPHORE && !check_semaphore(&sem)) return false;
-
-    /* Get given profile volume range */
-    long int min, max;
-    snd_mixer_selem_get_playback_volume_range(sp->volume_cntrl_mixer_element, &min, &max);
-
-    /* Change new volume to native range */
-    pd("set_new_volume: new vol [-100,100] or relative: %li\n", new_vol);
-
-    if (set_default_vol) {
-        // Set default volume, default volume is in [0-100] range
-        const bool change_range = true;
-        set_vol(sp->volume_cntrl_mixer_element, sp->default_volume, change_range);
-    } else if (toggle_vol) {
-        // toggle volume
-        change_range(&new_vol, 0, 100, min, max, false);
-        const bool change_range = false;
-        toggle_volume(sp, new_vol, min, change_range);
-    } else {
-        /* Change absolute and relative volumes */
-
-        /* First check if relative volume */
-        if (relative_inc || new_vol < 0) {
-            pd("Relative vol change...\n");
-            if (new_vol != 0) {
-                long int current_vol = -1;
-                pd("Changing new_vol %li range to [%i, %i]\n", new_vol, min,
-                        max);
-                if (new_vol > 0) {
-                    change_range(&new_vol, 0, 100, min, max, true);
-                } else {
-                    change_range(&new_vol, 0, 100, min, max, true);
-                }
-                pd("After chaning range new_vol: %li\n", new_vol);
-
-                const bool change_range = false;
-                get_vol(sp->volume_cntrl_mixer_element, &current_vol);
-                //get_vol_0_100(sp->volume_cntrl_mixer_element, &min, &max, &current_vol);
-                set_vol(sp->volume_cntrl_mixer_element, current_vol + new_vol, change_range);
-            }
-        } else {
-            const bool change_range = true;
-            set_vol(sp->volume_cntrl_mixer_element, new_vol, change_range);
-        }
-    }
-
-    if (USE_SEMAPHORE && !check_semaphore(&sem)) return false;
-    return true;
-}
 
 /*****************************************************************************
  * Main function
@@ -573,6 +328,20 @@ int main(const int argc, const char* argv[])
     struct sound_profile* current_sp = get_current_sound_profile();
     //snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
 
+    // Debug
+    /*
+    {
+        double norm_vol = 0.0;
+        norm_vol = get_normalized_playback_volume(current_sp->volume_cntrl_mixer_element, SND_MIXER_SCHN_FRONT_LEFT);
+        pd("Normalized volume: %g\n", norm_vol);
+
+        long int db_min, db_max;
+        snd_mixer_selem_get_playback_dB_range(current_sp->volume_cntrl_mixer_element, &db_min, &db_max);
+        pd("db_max, db_min: %li, %li\n", db_min, db_max);
+    }
+    */
+
+
     /* First do possible output profile change */
     if (cmd_opt.toggle_output) {
         pd("Toggling the output.\n");
@@ -580,7 +349,7 @@ int main(const int argc, const char* argv[])
         struct sound_profile* target_sp = get_target_sound_profile(current_sp);
 
         long int current_percent_vol = -1;
-        get_vol_0_100(current_sp->volume_cntrl_mixer_element, NULL, NULL, &current_percent_vol);
+        get_vol(current_sp->volume_cntrl_mixer_element, hardware_percentage, &current_percent_vol);
 
         /* Check if default volume is to be set */
         if (target_sp->set_default_volume &&
@@ -620,7 +389,8 @@ int main(const int argc, const char* argv[])
                     cmd_opt.new_vol,
                     cmd_opt.inc,
                     cmd_opt.set_default_vol,
-                    cmd_opt.toggle_vol);
+                    cmd_opt.toggle_vol,
+                    USE_SEMAPHORE);
             if (!ret) return 1;
             cmd_opt.new_vol = INT_MAX;
         }
@@ -667,7 +437,8 @@ int main(const int argc, const char* argv[])
                 cmd_opt.new_vol,
                 cmd_opt.inc,
                 cmd_opt.set_default_vol,
-                cmd_opt.toggle_vol);
+                cmd_opt.toggle_vol,
+                USE_SEMAPHORE);
         if (!ret) return 1;
     } else {
 
@@ -676,9 +447,13 @@ int main(const int argc, const char* argv[])
         /* Get given profile volume range */
         long int min, max;
         snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
+        pd("Current volume range is [%li, %li]\n", min, max);
 
-        get_vol(current_sp->volume_cntrl_mixer_element, &percent_vol);
+        get_vol(current_sp->volume_cntrl_mixer_element, hardware, &percent_vol);
+        pd("Got volume from mixer element: %li\n", percent_vol);
+
         change_range(&percent_vol, min, max, 0, 100, false);
+        pd("After range change: %li\n", percent_vol);
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)
