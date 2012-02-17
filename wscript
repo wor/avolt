@@ -44,7 +44,7 @@ def configure(conf):
         conf.env.CCDEFINES_MAIN = ['MAIN']
         conf.env.LIB_MAIN.append('m') # we need -lm for math
 
-        conf.env.CCFLAGS_MAIN = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-fwhole-program', '-std=c99']
+        conf.env.CCFLAGS_MAIN = ['-mtune=core2', '-march=core2', '-O3', '-Wall', '-Wextra', '-std=c99']
         print(conf.env)
 
 
