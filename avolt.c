@@ -129,6 +129,7 @@ void print_profile(
             "%s%sDefault volume: %i\n"
             "%s%sSoft limit volume: %i\n"
             "%s%sSet default volume: %i\n"
+            "%s%sVolume type to use: %s\n"
             "%s%sConfirm soft volume limit exceeding: %i\n",
             indent,
             profile->profile_name,
@@ -143,6 +144,8 @@ void print_profile(
             profile->soft_limit_volume,
             indent, indent,
             profile->set_default_volume,
+            indent, indent,
+            Volume_type_to_str[profile->volume_type],
             indent, indent,
             profile->confirm_exeeding_volume_limit
            );

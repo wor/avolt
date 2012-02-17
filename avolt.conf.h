@@ -14,6 +14,10 @@ enum Volume_type {
                             // [-6000db,0d] then the used range is [-60,0].
 };
 
+static const char *Volume_type_to_str[] = {"alsa percentage", "hardware percentage",
+     "hardware", "decibels"};
+
+
 /* Alsa mixer element config */
 struct sound_profile
 {

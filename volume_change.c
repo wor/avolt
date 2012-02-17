@@ -15,8 +15,8 @@ void toggle_volume(
         enum Volume_type volume_type);
 void set_vol(
         snd_mixer_elem_t* elem,
-        long int new_vol,
-        enum Volume_type volume_type);
+        enum Volume_type volume_type,
+        long int new_vol);
 
 /* Gets mixer volume with given type, if left and right channel volume differ,
  * then gives the larger one.
@@ -62,7 +62,10 @@ void get_vol(snd_mixer_elem_t* elem, enum Volume_type volume_type, long int* vol
 
 
 /* set volume as in range % (0-100) or in native range if change_range is false */
-void set_vol(snd_mixer_elem_t* elem, long int new_vol, enum Volume_type volume_type)
+void set_vol(
+        snd_mixer_elem_t* elem,
+        enum Volume_type volume_type,
+        long int new_vol)
 {
     // TODO: possibly add new_vol range check
     const int round_direction = 1;
@@ -89,11 +92,12 @@ void set_vol(snd_mixer_elem_t* elem, long int new_vol, enum Volume_type volume_t
         err = snd_mixer_selem_set_playback_volume_all(elem, new_vol);
     }
     else {
+        fprintf(stderr, "avolt ERROR: set_vol: Unknown volume_type '%i'.\n", volume_type);
         err = -1;
     }
 
     if (err != 0) {
-        fprintf(stderr, "avolt ERROR: snd mixer set playback volume failed.\n");
+        fprintf(stderr, "avolt ERROR: snd mixer set playback volume failed with new vol '%li' and volume type '%i'.\n", new_vol, volume_type);
     }
 }
 
