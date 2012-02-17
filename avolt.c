@@ -18,6 +18,7 @@
  * [gcc|clang] $(pkg-config --cflags --libs alsa) -std=c99 avolt.c -o avolt
  */
 
+// TODO: now only master volume is set.
 /* TODO: check const correctness */
 
 #include <alsa/asoundlib.h>
@@ -329,45 +330,34 @@ int main(const int argc, const char* argv[])
 
     /* First we must determine witch profile is "on" */
     struct sound_profile* current_sp = get_current_sound_profile();
-    //snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
-
-    // Debug
-    /*
-    {
-        double norm_vol = 0.0;
-        norm_vol = get_normalized_playback_volume(current_sp->volume_cntrl_mixer_element, SND_MIXER_SCHN_FRONT_LEFT);
-        pd("Normalized volume: %g\n", norm_vol);
-
-        long int db_min, db_max;
-        snd_mixer_selem_get_playback_dB_range(current_sp->volume_cntrl_mixer_element, &db_min, &db_max);
-        pd("db_max, db_min: %li, %li\n", db_min, db_max);
-    }
-    */
-
 
     /* First do possible output profile change */
     if (cmd_opt.toggle_output) {
-        pd("Toggling the output.\n");
+        PD_M("Toggling the output.\n");
 
         struct sound_profile* target_sp = get_target_sound_profile(current_sp);
 
+        // For now this code doesn't work if profiles and given volume types
+        // differ // TOOD: fix sometime
+        assert(VOLUME_TYPE == target_sp->volume_type);
+
         long int current_percent_vol = -1;
-        get_vol(current_sp->volume_cntrl_mixer_element, hardware_percentage, &current_percent_vol);
+        get_vol(current_sp->volume_cntrl_mixer_element, target_sp->volume_type, &current_percent_vol);
 
         /* Check if default volume is to be set */
         if (target_sp->set_default_volume &&
                 cmd_opt.new_vol == INT_MAX &&
                 target_sp->default_volume != current_percent_vol) {
-            pd("Setting the default volume.\n");
+            PD_M("Setting the default volume.\n");
             cmd_opt.new_vol = target_sp->default_volume;
         }
 
         if (cmd_opt.new_vol == INT_MAX &&
                 target_sp->default_volume != current_percent_vol &&
                 !target_sp->set_default_volume) {
-            int adjustment = target_sp->default_volume - current_sp->default_volume;
-            pd("Setting relative volume: adjustment %i, to def %i, from def %i.\n", adjustment,
-                    target_sp->default_volume, current_sp->default_volume);
+            int adjustment = target_sp->default_volume - current_percent_vol;
+            PD_M("Setting relative volume: adjustment %i, to def %i, from volume %i.\n", adjustment,
+                    target_sp->default_volume, current_percent_vol);
             if (adjustment > 0) cmd_opt.inc = true;
             if (adjustment != 0) cmd_opt.new_vol = adjustment;
         }
@@ -385,15 +375,15 @@ int main(const int argc, const char* argv[])
         if (current_percent_vol > cmd_opt.new_vol &&
                 current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) {
 
-            printf("DEBUG: PRE setting volume: %i\n", cmd_opt.new_vol);
-            // TODO: adjustment volume calculation wrong!
+            PD_M("PRE setting volume: %i\n", cmd_opt.new_vol);
             bool ret = set_new_volume(
                     target_sp,
                     cmd_opt.new_vol,
                     cmd_opt.inc,
                     cmd_opt.set_default_vol,
                     cmd_opt.toggle_vol,
-                    USE_SEMAPHORE);
+                    USE_SEMAPHORE,
+                    VOLUME_TYPE);
             if (!ret) return 1;
             cmd_opt.new_vol = INT_MAX;
         }
@@ -403,7 +393,7 @@ int main(const int argc, const char* argv[])
         // Check if target_sp has a dependency with current_sp
         if (current_sp->mixer_element != target_sp->volume_cntrl_mixer_element) {
             // If not switch current_sp off
-            printf("DEBUG: switching off element: %s\n", current_sp->mixer_element_name);
+            PD_M("switching off element: %s\n", current_sp->mixer_element_name);
             err = snd_mixer_selem_set_playback_switch_all(current_sp->mixer_element, false);
             if (err) printf("Error occured when toggling off current_sp mixer_element named: %s\n", current_sp->mixer_element_name);
         }
@@ -427,7 +417,7 @@ int main(const int argc, const char* argv[])
         if (err) { printf("Errors occured while on/offing the output.\n"); return err; }
         /* Exit if nothing else to do */
         if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle_vol) return err;
-    }
+    } // End of toggle_output
 
     /* Second do possible volume change */
     /* If new volume given or toggle volume, or set default volume */
@@ -441,7 +431,8 @@ int main(const int argc, const char* argv[])
                 cmd_opt.inc,
                 cmd_opt.set_default_vol,
                 cmd_opt.toggle_vol,
-                USE_SEMAPHORE);
+                USE_SEMAPHORE,
+                VOLUME_TYPE);
         if (!ret) return 1;
     } else {
 
@@ -450,13 +441,10 @@ int main(const int argc, const char* argv[])
         /* Get given profile volume range */
         long int min, max;
         snd_mixer_selem_get_playback_volume_range(current_sp->volume_cntrl_mixer_element, &min, &max);
-        pd("Current volume range is [%li, %li]\n", min, max);
+        PD_M("Current volume range is [%li, %li]\n", min, max);
 
-        get_vol(current_sp->volume_cntrl_mixer_element, hardware, &percent_vol);
-        pd("Got volume from mixer element: %li\n", percent_vol);
-
-        change_range(&percent_vol, min, max, 0, 100, false);
-        pd("After range change: %li\n", percent_vol);
+        get_vol(current_sp->volume_cntrl_mixer_element, VOLUME_TYPE, &percent_vol);
+        PD_M("Got volume from mixer element: %li\n", percent_vol);
 
         printf("%li", percent_vol);
         if (cmd_opt.verbose_level > 0)

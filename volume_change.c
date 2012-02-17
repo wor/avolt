@@ -16,7 +16,8 @@ void toggle_volume(
 void set_vol(
         snd_mixer_elem_t* elem,
         enum Volume_type volume_type,
-        long int new_vol);
+        long int new_vol,
+        int round_direction);
 
 /* Gets mixer volume with given type, if left and right channel volume differ,
  * then gives the larger one.
@@ -37,6 +38,7 @@ void get_vol(snd_mixer_elem_t* elem, enum Volume_type volume_type, long int* vol
     else if (volume_type == alsa_percentage) {
         double l_norm = get_normalized_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT);
         double r_norm = get_normalized_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT);
+        PD_M("Got alsa_percentage volumes: %g, %g\n", l_norm, r_norm);
         l = lround(l_norm*100);
         r = lround(r_norm*100);
     }
@@ -58,17 +60,20 @@ void get_vol(snd_mixer_elem_t* elem, enum Volume_type volume_type, long int* vol
     }
 
     *vol = l >= r ? l : r;
+    PD_M("get_vol returns: %li\n", *vol);
 }
 
 
-/* set volume as in range % (0-100) or in native range if change_range is false */
+/* Set volume with given volume_type.
+ * round_direction: >0 to round up, <0 to round down, 0 to use default lrint
+ *                  rounding direction (see fsetround(3)).*/
 void set_vol(
         snd_mixer_elem_t* elem,
         enum Volume_type volume_type,
-        long int new_vol)
+        long int new_vol,
+        int round_direction)
 {
     // TODO: possibly add new_vol range check
-    const int round_direction = 1;
     int err = 0;
 
     if (volume_type == hardware) {
@@ -78,7 +83,8 @@ void set_vol(
         err = snd_mixer_selem_set_playback_dB_all(elem, new_vol, round_direction);
     }
     else if (volume_type == alsa_percentage) {
-        double new_vol_norm = new_vol / 100;
+        double new_vol_norm = (double) new_vol / 100;
+        PD_M("Setting alsa_percentage volume: %g\n", new_vol_norm);
         err = set_normalized_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, new_vol_norm, round_direction);
         if (err == 0) {
             err = set_normalized_playback_volume(elem, SND_MIXER_SCHN_FRONT_RIGHT, new_vol_norm, round_direction);
@@ -120,16 +126,16 @@ void change_range(
         *num = -*num;
     }
     assert((*num >= r_f_min && *num <= r_f_max) || (relative) || "Not in from range!");
-    pd("change_range: [%i, %i] -> [%i, %i]\n", r_f_min, r_f_max, r_t_min,
+    PD_M("change_range: [%i, %i] -> [%i, %i]\n", r_f_min, r_f_max, r_t_min,
             r_t_max);
 
     // shift
     *num = *num - r_f_min;
-    pd("change_range: shifted given vol: %li\n", *num);
+    PD_M("change_range: shifted given vol: %li\n", *num);
 
     // get multiplier
     float mul = (float)(r_t_max - r_t_min)/(float)(r_f_max - r_f_min);
-    pd("change_range: Calculated multiplier: %f\n", mul);
+    PD_M("change_range: Calculated multiplier: %f\n", mul);
 
     // multiply and shift to the new range
     float f = ((float)*num * mul) + r_t_min;
@@ -193,13 +199,13 @@ void toggle_volume(
     // If current volume is lowest possible
     if (current_vol == min) {
         if (new_vol > 0 && new_vol != INT_MAX)
-            set_vol(sp->volume_cntrl_mixer_element, volume_type, new_vol);
+            set_vol(sp->volume_cntrl_mixer_element, volume_type, new_vol, 0);
         else
-            set_vol(sp->volume_cntrl_mixer_element, sp->volume_type, sp->default_volume);
+            set_vol(sp->volume_cntrl_mixer_element, sp->volume_type, sp->default_volume, 0);
     }
     else {
         // Else zero current volume
-        set_vol(sp->volume_cntrl_mixer_element, hardware_percentage, 0);
+        set_vol(sp->volume_cntrl_mixer_element, hardware_percentage, 0, 0);
     }
     return;
 }
@@ -212,7 +218,8 @@ bool set_new_volume(
         bool relative_inc,
         bool set_default_vol,
         bool toggle_vol,
-        bool use_semaphore)
+        bool use_semaphore,
+        enum Volume_type volume_type)
 {
     /* XXX: Checking new_vol limits */
     if (relative_inc) {
@@ -220,7 +227,7 @@ bool set_new_volume(
             fprintf(stderr, "Cannot set volume which is not in range [0,100]: %li\n", new_vol);
             return false;
         }
-    } else if ((new_vol < -100 || new_vol > 100) && !set_default_vol) {
+    } else if ((new_vol < -100 || new_vol > 100) && !set_default_vol && !toggle_vol) {
         fprintf(stderr, "Cannot set volume which is not in range [-100,100]: %li\n", new_vol);
         return false;
     }
@@ -230,29 +237,35 @@ bool set_new_volume(
     if (use_semaphore && !check_semaphore(&sem)) return false;
 
     /* Change new volume to native range */
-    pd("set_new_volume: new vol [-100,100] or relative: %li\n", new_vol);
+    PD_M("set_new_volume: new vol [-100,100], relative or toggling: %li\n", new_vol);
 
     if (set_default_vol) {
         // Set default volume
-        set_vol(sp->volume_cntrl_mixer_element, sp->volume_type, sp->default_volume);
+        PD_M("set_new_volume: setting default vol..\n");
+        set_vol(sp->volume_cntrl_mixer_element, sp->volume_type, sp->default_volume, 0);
     } else if (toggle_vol) {
         // toggle volume
-        toggle_volume(sp, new_vol, hardware_percentage);
+        PD_M("set_new_volume: toggling..\n");
+        toggle_volume(sp, new_vol, volume_type);
     } else {
         /* Change absolute and relative volumes */
 
         /* First check if relative volume */
         if (relative_inc || new_vol < 0) {
             if (new_vol != 0) {
-                pd("Relative vol change...\n");
+                PD_M("set_new_volume: Relative vol change...\n");
                 long int current_vol = 0;
                 // Change volume relative to current volume
-                get_vol(sp->volume_cntrl_mixer_element, hardware, &current_vol);
-                set_vol(sp->volume_cntrl_mixer_element, hardware, current_vol + new_vol);
+                get_vol(sp->volume_cntrl_mixer_element, volume_type, &current_vol);
+                // By setting the round direction we always guarantee that
+                // some change happens.
+                int round_direction = new_vol < 0 ? -1 : 1;
+                set_vol(sp->volume_cntrl_mixer_element, volume_type, current_vol + new_vol, round_direction);
             }
         } else {
             // Change absolute volume
-            set_vol(sp->volume_cntrl_mixer_element, hardware_percentage, new_vol);
+            PD_M("set_new_volume: Changing absolute volume: %li\n", new_vol);
+            set_vol(sp->volume_cntrl_mixer_element, volume_type, new_vol, 0);
         }
     }
 

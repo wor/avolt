@@ -17,7 +17,8 @@ bool set_new_volume(
         bool relative_inc,
         bool set_default_vol,
         bool toggle_vol,
-        bool use_semaphore);
+        bool use_semaphore,
+        enum Volume_type volume_type);
 
 void change_range(
         long int* num,
