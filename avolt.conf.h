@@ -32,9 +32,8 @@ struct sound_profile
     int default_volume;
     enum Volume_type volume_type;
     int soft_limit_volume;
-    bool set_default_volume; /* Set default volume when element toggled on */
-    bool confirm_exeeding_volume_limit;
-    //int (*on_func)(void); // XXX: not used yet
+    bool set_default_volume;
+    bool confirm_exceeding_volume_limit;
 };
 
 

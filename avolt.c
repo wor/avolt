@@ -33,6 +33,21 @@
 #include "avolt.conf"
 #include "wutil.h"
 
+/* Function declarations */
+static snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
+static snd_mixer_t* get_handle(void);
+static bool get_mixer_front_panel_switch();
+static bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem);
+static struct sound_profile* get_target_sound_profile(
+        struct sound_profile* current);
+static void print_profile(
+        struct sound_profile const* profile,
+        char const* indent,
+        FILE* output);
+static void init_sound_profiles(snd_mixer_t* handle);
+//static void list_mixer_elements(snd_mixer_t* handle); DEBUG func
+
+/* TOOD: move these to cmdline reading module. */
 /* Command line options */
 struct cmd_options
 {
@@ -43,27 +58,12 @@ struct cmd_options
     bool inc; // Do we increase volume
     int verbose_level; // Verbosity level
 };
-
-
-/* Function declarations */
-static snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
-static snd_mixer_t* get_handle(void);
 static bool read_cmd_line_options(
         const int argc,
         const char** argv,
         struct cmd_options* cmd_opt);
-static bool get_mixer_front_panel_switch();
-static bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem);
-static struct sound_profile* get_target_sound_profile(struct sound_profile* current);
-//static void list_mixer_elements(snd_mixer_t* handle); DEBUG func
-
 static void get_vol_from_arg(const char* arg, int* new_vol, bool* inc);
-static void print_profile(
-        struct sound_profile const* profile,
-        char const* indent,
-        FILE* output);
 static void print_config(FILE* output);
-static void init_sound_profiles(snd_mixer_t* handle);
 
 
 /* Get alsa handle */
@@ -148,7 +148,7 @@ void print_profile(
             indent, indent,
             Volume_type_to_str[profile->volume_type],
             indent, indent,
-            profile->confirm_exeeding_volume_limit
+            profile->confirm_exceeding_volume_limit
            );
 }
 
@@ -168,8 +168,8 @@ void print_config(FILE* output)
     }
     if (USE_SEMAPHORE)
         fprintf(output,
-            "Use semaphore named '%s' to enable concurrent volume "
-            "setting preventing.\n", SEMAPHORE_NAME);
+            "Using semaphore named '%s' to prevent concurrent volume "
+            "modification.\n", SEMAPHORE_NAME);
 }
 
 
@@ -365,7 +365,7 @@ int main(const int argc, const char* argv[])
         }
 
         /* Check volume limit if setting new volume */
-        else if (target_sp->confirm_exeeding_volume_limit &&
+        else if (target_sp->confirm_exceeding_volume_limit &&
                 cmd_opt.new_vol > target_sp->soft_limit_volume) {
             printf("Are you sure you want to set the main volume to %i? [N/y]: ",
                     cmd_opt.new_vol);
