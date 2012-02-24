@@ -343,29 +343,26 @@ int main(const int argc, const char* argv[])
         // differ // TOOD: fix sometime
         assert(VOLUME_TYPE == target_sp->volume_type);
 
-        long int current_percent_vol = -1;
-        get_vol(current_sp->volume_cntrl_mixer_element, target_sp->volume_type, &current_percent_vol);
+        long int current_vol = -1;
+        get_vol(current_sp->volume_cntrl_mixer_element, target_sp->volume_type, &current_vol);
 
-        /* Check if default volume is to be set */
-        if (target_sp->set_default_volume &&
-                cmd_opt.new_vol == INT_MAX &&
-                target_sp->default_volume != current_percent_vol) {
-            PD_M("Setting the default volume.\n");
-            cmd_opt.new_vol = target_sp->default_volume;
+
+        /* Check if no new volume given */
+        if (cmd_opt.new_vol == INT_MAX) {
+            /* Check if default volume is to be set */
+            if (target_sp->set_default_volume) {
+                PD_M("Setting the default volume.\n");
+                cmd_opt.new_vol = target_sp->default_volume;
+            }
+            else { // Else no volume change
+                cmd_opt.new_vol = current_vol;
+            }
         }
 
-        if (cmd_opt.new_vol == INT_MAX &&
-                target_sp->default_volume != current_percent_vol &&
-                !target_sp->set_default_volume) {
-            int adjustment = target_sp->default_volume - current_percent_vol;
-            PD_M("Setting relative volume: adjustment %i, to def %i, from volume %i.\n", adjustment,
-                    target_sp->default_volume, current_percent_vol);
-            if (adjustment > 0) cmd_opt.inc = true;
-            if (adjustment != 0) cmd_opt.new_vol = adjustment;
-        }
+        assert(cmd_opt.new_vol != INT_MAX);
 
         /* Check volume limit if setting new volume */
-        else if (target_sp->confirm_exceeding_volume_limit &&
+        if (target_sp->confirm_exceeding_volume_limit &&
                 cmd_opt.new_vol > target_sp->soft_limit_volume) {
             printf("Are you sure you want to set the main volume to %i? [N/y]: ",
                     cmd_opt.new_vol);
@@ -373,34 +370,40 @@ int main(const int argc, const char* argv[])
                 cmd_opt.new_vol = target_sp->default_volume;
         }
 
-        /* Set volume now if early setting needed to avoid volume spikes */
-        if (current_percent_vol > cmd_opt.new_vol &&
-                current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) {
-
-            PD_M("PRE setting volume: %i\n", cmd_opt.new_vol);
+        /* If setting to a lower volume set volume before switching element to avoid volume spikes */
+        //if (!cmd_opt.inc && current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element && current_vol > cmd_opt.new_vol) {
+        if (current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element &&
+                cmd_opt.new_vol != current_vol) {
+            //PD_M("PRE setting volume to zero during output element switch: %i\n", cmd_opt.new_vol);
+            PD_M("PRE setting volume to zero during output element switch.\n");
             bool ret = set_new_volume(
                     target_sp,
-                    cmd_opt.new_vol,
-                    cmd_opt.inc,
+                    0,
+                    false,
                     cmd_opt.set_default_vol,
-                    cmd_opt.toggle_vol,
+                    false,
                     USE_SEMAPHORE,
                     VOLUME_TYPE);
             if (!ret) return 1;
-            cmd_opt.new_vol = INT_MAX;
+
+            // If new_vol is relative we need to calculate new new_vol value
+            if (cmd_opt.new_vol < 0 || cmd_opt.inc) {
+                cmd_opt.new_vol += current_vol;
+            }
+            current_vol = 0;
         }
 
         /* Turn on/off the outputs */
         int err;
-        // Check if target_sp has a dependency with current_sp
+        /* Check if target_sp has a dependency with current_sp */
         if (current_sp->mixer_element != target_sp->volume_cntrl_mixer_element) {
-            // If not switch current_sp off
+            /* If not switch current_sp off */
             PD_M("switching off element: %s\n", current_sp->mixer_element_name);
             err = snd_mixer_selem_set_playback_switch_all(current_sp->mixer_element, false);
             if (err) printf("Error occured when toggling off current_sp mixer_element named: %s\n", current_sp->mixer_element_name);
         }
 
-        // Switch target's mixer element on
+        /* Switch target's mixer element on */
         err = snd_mixer_selem_set_playback_switch_all(target_sp->mixer_element, true);
         if (err) printf("Error occured when toggling off current_sp mixer_element named: %s\n", current_sp->mixer_element_name);
 
@@ -417,8 +420,11 @@ int main(const int argc, const char* argv[])
         }
 
         if (err) { printf("Errors occured while on/offing the output.\n"); return err; }
+
         /* Exit if nothing else to do */
-        if (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle_vol) return err;
+        if ( (cmd_opt.new_vol == INT_MAX && !cmd_opt.toggle_vol) ||
+                (current_vol == cmd_opt.new_vol &&
+                 current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) ) return err;
     } // End of toggle_output
 
     /* Second do possible volume change */
