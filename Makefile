@@ -1,12 +1,6 @@
 # ###################################################################
 # Author: Esa Määttä, 2011
 # ###################################################################
-#	For reference about autodep magic look:
-#	http://scottmcpeak.com/autodepend/autodepend.html
-#	http://make.paulandlesley.org/autodep.html
-
-#	For some help about gnu make:
-#	http://singhkunal.com/website/techstuff/tutorials/GNUMakeTutorial.htm
 
 # Include helper scripts for makefile environment options
 include Makefile_options
