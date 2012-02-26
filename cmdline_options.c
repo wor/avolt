@@ -2,9 +2,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 #include <limits.h>   /* INT_MAX and so on */
 
 #include "cmdline_options.h"
+#include "alsa_utils.h"
 #include "avolt.conf.h"
 #include "avolt.conf"
 
@@ -123,4 +125,56 @@ void print_profile(
             indent, indent,
             profile->confirm_exceeding_volume_limit
            );
+}
+
+
+/* Initializes all sound profiles from SOUND_PROFILES array */
+void init_sound_profiles(snd_mixer_t* handle)
+{
+    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
+        if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name)
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element = get_elem(handle, SOUND_PROFILES[i]->volume_cntrl_mixer_element_name);
+        else {
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element_name = SOUND_PROFILES[i]->mixer_element_name;
+            SOUND_PROFILES[i]->volume_cntrl_mixer_element = SOUND_PROFILES[i]->mixer_element;
+        }
+    }
+}
+
+
+/* Get's current sound profile in use */
+struct sound_profile* get_current_sound_profile()
+{
+    struct sound_profile* current = NULL;
+    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        snd_mixer_elem_t* e = SOUND_PROFILES[i]->mixer_element;
+        if (snd_mixer_selem_has_playback_switch(e) &&
+                is_mixer_elem_playback_switch_on(e)) {
+            if (!current || (
+                        strcmp(SOUND_PROFILES[i]->volume_cntrl_mixer_element_name, SOUND_PROFILES[i]->mixer_element_name) != 0 &&
+                        is_mixer_elem_playback_switch_on(SOUND_PROFILES[i]->volume_cntrl_mixer_element)))
+                    current = SOUND_PROFILES[i];
+        }
+    }
+
+    assert(current);
+    return current;
+}
+
+
+/* Gets target sound profile from TOGGLE_SOUND_PROFILES array */
+struct sound_profile* get_target_sound_profile(struct sound_profile* current)
+{
+    struct sound_profile* target = NULL;
+    for (int i = 0; i < TOGGLE_SOUND_PROFILES_SIZE; ++i) {
+        snd_mixer_elem_t* e = TOGGLE_SOUND_PROFILES[i]->mixer_element;
+        if (strcasecmp(snd_mixer_selem_get_name(current->mixer_element),
+                snd_mixer_selem_get_name(e)) == 0) {
+            target = i+1 < TOGGLE_SOUND_PROFILES_SIZE ? TOGGLE_SOUND_PROFILES[i+1] : TOGGLE_SOUND_PROFILES[0];
+        }
+    }
+
+    assert(target);
+    return target;
 }

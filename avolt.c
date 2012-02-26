@@ -1,170 +1,29 @@
 /* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
-/* Simple program to set/get/toggle alsa (Master) volume.
+/* "Simple" program to set/get/toggle alsa (Master) volume.
  *
- * XXX: Now there's a issue that received alsa volumes both seem to be on
- * logarithmic scale, (the db and the normal playback volume).
- * So when setting volume you set the volume on 0-100 as percentage of the
- * logarithmic volume. Meaning the perceived volume level increases faster on
- * the high levels than the low.
- *
- * TODO: save current volume and restore it if front panel toggling
- * fails.
- * TODO: check that front panel volume toggling works. 0<-->front panel default.
+ * TODO: save current volume and restore it if front panel toggling fails.
+ * TODO: now only master volume is set.
  * */
 
 /* compile with:
- * [gcc|clang] $(pkg-config --cflags --libs alsa) -lm -std=c99 avolt.c -o avolt
+ * [gcc|clang] $(pkg-config --cflags --libs alsa) -lm -pthread -std=c99 avolt.c -o avolt
  */
 
-// TODO: now only master volume is set.
-/* TODO: check const correctness */
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
 #include <strings.h>
-#include <unistd.h>   /* access */
 #include <limits.h>   /* INT_MAX and so on */
 #include <stdbool.h>
 
-#include "cmdline_options.h"
-#include "volume_change.h"
 #include "avolt.conf.h"
 #include "avolt.conf"
+#include "alsa_utils.h"
+#include "cmdline_options.h"
+#include "volume_change.h"
 #include "wutil.h" // TODO: rename to util.h
-
-/* Function declarations */
-// TODO: move alsa stuff to alsa_utils.h
-static snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name);
-static snd_mixer_t* get_handle(void);
-static bool get_mixer_front_panel_switch();
-static bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem);
-static struct sound_profile* get_target_sound_profile(
-        struct sound_profile* current);
-static void init_sound_profiles(snd_mixer_t* handle);
-//static void list_mixer_elements(snd_mixer_t* handle); DEBUG func
-
-
-/* Get alsa handle */
-snd_mixer_t* get_handle()
-{
-    snd_mixer_t* handle = NULL;
-
-    int ret_val = snd_mixer_open(&handle, 0);
-    assert(ret_val >= 0);
-
-    snd_mixer_attach(handle, "default");
-    snd_mixer_selem_register(handle, NULL, NULL);
-    snd_mixer_load(handle);
-
-    return handle;
-}
-
-
-/* Get mixer elem with given name from the handle */
-snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
-{
-    snd_mixer_elem_t* elem = NULL;
-
-    /* get snd_mixer_elem_t pointer, corresponding DEFAULT.volume_cntrl_mixer_element_name */
-    snd_mixer_elem_t* var = snd_mixer_first_elem(handle);
-    while (var != NULL) {
-        if (strcasecmp(name, snd_mixer_selem_get_name(var)) == 0) {
-            elem = var;
-            break;
-        }
-        var = snd_mixer_elem_next(var);
-    }
-
-    assert(elem);
-    return elem;
-}
-
-
-bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem)
-{
-    /* XXX: Could assert that snd_mixer_selem_has_playback_switch(elem) */
-    int temp_switch = -1;
-    snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
-    return temp_switch;
-}
-
-
-/* Gets mixer front panels switch value (on/off).
- * Returns true for "on" and false for "off". */
-bool get_mixer_front_panel_switch()
-{
-    return is_mixer_elem_playback_switch_on(FRONT_PANEL.mixer_element);
-}
-
-
-/* Initializes all sound profiles from SOUND_PROFILES array */
-void init_sound_profiles(snd_mixer_t* handle)
-{
-    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
-        SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
-        if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name)
-            SOUND_PROFILES[i]->volume_cntrl_mixer_element = get_elem(handle, SOUND_PROFILES[i]->volume_cntrl_mixer_element_name);
-        else {
-            SOUND_PROFILES[i]->volume_cntrl_mixer_element_name = SOUND_PROFILES[i]->mixer_element_name;
-            SOUND_PROFILES[i]->volume_cntrl_mixer_element = SOUND_PROFILES[i]->mixer_element;
-        }
-    }
-}
-
-
-/* Get's current sound profile in use */
-struct sound_profile* get_current_sound_profile()
-{
-    struct sound_profile* current = NULL;
-    for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
-        snd_mixer_elem_t* e = SOUND_PROFILES[i]->mixer_element;
-        if (snd_mixer_selem_has_playback_switch(e) &&
-                is_mixer_elem_playback_switch_on(e)) {
-            if (!current || (
-                        strcmp(SOUND_PROFILES[i]->volume_cntrl_mixer_element_name, SOUND_PROFILES[i]->mixer_element_name) != 0 &&
-                        is_mixer_elem_playback_switch_on(SOUND_PROFILES[i]->volume_cntrl_mixer_element)))
-                    current = SOUND_PROFILES[i];
-        }
-    }
-
-    assert(current);
-    return current;
-}
-
-
-/* Gets target sound profile from TOGGLE_SOUND_PROFILES array */
-struct sound_profile* get_target_sound_profile(struct sound_profile* current)
-{
-    struct sound_profile* target = NULL;
-    for (int i = 0; i < TOGGLE_SOUND_PROFILES_SIZE; ++i) {
-        snd_mixer_elem_t* e = TOGGLE_SOUND_PROFILES[i]->mixer_element;
-        if (strcasecmp(snd_mixer_selem_get_name(current->mixer_element),
-                snd_mixer_selem_get_name(e)) == 0) {
-            target = i+1 < TOGGLE_SOUND_PROFILES_SIZE ? TOGGLE_SOUND_PROFILES[i+1] : TOGGLE_SOUND_PROFILES[0];
-        }
-    }
-
-    assert(target);
-    return target;
-}
-
-
-
-/* Print info about existing mixer elements */
-/*
-void list_mixer_elements(snd_mixer_t* handle)
-{
-    snd_mixer_elem_t* elem = snd_mixer_first_elem(handle);
-    for (int i = 1; elem != NULL; ++i) {
-        printf("%i. Element name: %s\n", i, snd_mixer_selem_get_name(elem));
-        if (snd_mixer_selem_has_playback_switch(elem))
-            printf("  Element has playback switch.\n");
-        elem = snd_mixer_elem_next(elem);
-    }
-}
-*/
 
 
 /*****************************************************************************

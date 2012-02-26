@@ -32,4 +32,11 @@ void print_profile(
         char const* indent,
         FILE* output);
 
+struct sound_profile* get_current_sound_profile();
+
+struct sound_profile* get_target_sound_profile(
+        struct sound_profile* current);
+
+void init_sound_profiles(snd_mixer_t* handle);
+
 #endif
