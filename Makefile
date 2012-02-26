@@ -41,7 +41,7 @@ OPTIONS__BIN = "Binary file to create"
 OPTIONS__EFENCE = "Link against efence to ease memory debugging."
 OPTIONS__DESTDIR = "Install destination directory."
 OPTIONS__GCC = "Use gcc as a compiler (default is clang)."
-OPTIONS__DEBUG_TEST = "Example debug flag, if 'DEBUG_TEST' env variable defined then flag '-DDEBUG_TEST' is given to the compiler."
+OPTIONS__DEBUG_AVOLT = "Enable debug printing."
 # Add a new option here..
 
 # ###################################################################

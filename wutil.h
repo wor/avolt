@@ -5,7 +5,7 @@
 // Enable debug printing
 //#define _DEBUG
 
-#ifdef _DEBUG
+#ifdef DEBUG_AVOLT
 #define PD_M pd
 #else
 #define PD_M(...)
