@@ -125,18 +125,18 @@ install: all
 	@cp -f $(BUILDDIR)/${BIN} ${DESTDIR}${PREFIX}/bin
 	@chmod 755 ${DESTDIR}${PREFIX}/bin/${BIN}
 	@# Man page installing
-	@echo installing manual page to ${DESTDIR}${MANPREFIX}/man1
-	@mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	@sed "s/VERSION/${VERSION}/g" < ${BIN}.1 > ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
-	@chmod 644 ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
+	#@echo installing manual page to ${DESTDIR}${MANPREFIX}/man1
+	#@mkdir -p ${DESTDIR}${MANPREFIX}/man1
+	#@sed "s/VERSION/${VERSION}/g" < ${BIN}.1 > ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
+	#@chmod 644 ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
 
 .PHONY: uninstall
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
 	@rm -f ${DESTDIR}${PREFIX}/bin/${BIN}
 	@# Man page uninstalling
-	@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
-	@rm -f ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
+	#@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
+	#@rm -f ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
 
 .PHONY: help
 help:
@@ -160,9 +160,9 @@ help:
 	@echo
 	@echo "To be binary install dir ({DESTDIR}{PREFIX}/bin):"
 	@echo ${DESTDIR}${PREFIX}/bin
-	@echo
-	@echo "To be manpage install dir ({DESTDIR}{MANPREFIX}/man1):"
-	@echo ${DESTDIR}${MANPREFIX}/man1
+	#@echo
+	#@echo "To be manpage install dir ({DESTDIR}{MANPREFIX}/man1):"
+	#@echo ${DESTDIR}${MANPREFIX}/man1
 
 
 .PHONY: test
