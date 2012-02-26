@@ -147,7 +147,7 @@ void change_range(
             *num = -*num;
         }
     }
-    assert(*num >= r_t_min && *num <= r_t_max || (relative) || "Not in from range!");
+    assert((*num >= r_t_min && *num <= r_t_max) || relative || "Not in from range!");
 }
 
 
