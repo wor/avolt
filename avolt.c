@@ -43,8 +43,6 @@ int main(const int argc, const char* argv[])
     snd_mixer_t* handle = get_handle();
     init_sound_profiles(handle);
 
-    /* list_mixer_elements(handle); // DEBUG */
-
     /* First we must determine witch profile is "on" */
     struct sound_profile* current_sp = get_current_sound_profile();
 
