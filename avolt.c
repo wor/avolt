@@ -1,14 +1,8 @@
 /* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
-/* "Simple" program to set/get/toggle alsa (Master) volume.
- *
- * TODO: save current volume and restore it if front panel toggling fails.
- * TODO: now only master volume is set.
- * */
-
-/* compile with:
- * [gcc|clang] $(pkg-config --cflags --libs alsa) -lm -pthread -std=c99 avolt.c -o avolt
+/* "Simple" program to set/get/toggle alsa mixer element volume.
+ *  (This program was once simple, it definitely isn't anymore.)
  */
 
 
