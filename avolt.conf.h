@@ -1,6 +1,7 @@
 #ifndef AVOLT_CONF_H_INCLUDED
 #define AVOLT_CONF_H_INCLUDED
 
+#include <alsa/asoundlib.h>
 #include <stdbool.h>
 
 /* Different presentations for the volume */

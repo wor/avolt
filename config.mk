@@ -28,7 +28,7 @@ ALSAINC = `pkg-config --cflags alsa`
 INCS = ${ALSAINC}
 
 ALSALIB = `pkg-config --libs alsa`
-LIBS = -lm ${ALSALIB}
+LIBS = -lm -pthread ${ALSALIB}
 
 ifdef EFENCE
 	LIBS = ${LIBS} -lefence

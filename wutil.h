@@ -1,3 +1,5 @@
+#ifndef WUTIL_H_INCLUDED
+#define WUTIL_H_INCLUDED
 // Header file for random c utility functions
 
 // Enable debug printing
@@ -11,3 +13,5 @@
 
 // Simple debug printer
 void pd(const char *fmt, ...);
+
+#endif
