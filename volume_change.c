@@ -8,16 +8,20 @@
 #include "volume_mapping.h"
 #include "wutil.h"
 
-// TODO: define module internal funcs here
+
+
 void toggle_volume(
         struct sound_profile* sp,
         long int const new_vol,
         enum Volume_type volume_type);
+
+
 void set_vol(
         snd_mixer_elem_t* elem,
         enum Volume_type volume_type,
         long int new_vol,
         int round_direction);
+
 
 /* Gets mixer volume with given type, if left and right channel volume differ,
  * then gives the larger one.
