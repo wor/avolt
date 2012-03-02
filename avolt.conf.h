@@ -15,9 +15,6 @@ enum Volume_type {
                             // [-6000db,0d] then the used range is [-60,0].
 };
 
-static const char *Volume_type_to_str[] = {"alsa percentage", "hardware percentage",
-     "hardware", "decibels"};
-
 
 /* Alsa mixer element config */
 struct sound_profile
@@ -37,5 +34,20 @@ struct sound_profile
     bool confirm_exceeding_volume_limit;
 };
 
+void init_sound_profiles(snd_mixer_t* handle);
+
+void print_config(FILE* output);
+
+void print_profile(
+        struct sound_profile const* profile,
+        char const* indent,
+        FILE* output);
+
+struct sound_profile* get_current_sound_profile();
+
+struct sound_profile* get_target_sound_profile(
+        struct sound_profile* current);
+
+bool get_mixer_front_panel_switch();
 
 #endif

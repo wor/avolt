@@ -4,7 +4,7 @@
 #include <strings.h>
 
 #include "alsa_utils.h"
-#include "avolt.conf"
+
 
 /* Get alsa handle */
 snd_mixer_t* get_handle()
@@ -45,18 +45,10 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 bool is_mixer_elem_playback_switch_on(snd_mixer_elem_t* elem)
 {
     /* XXX: Could assert that snd_mixer_selem_has_playback_switch(elem) */
+    assert(elem);
     int temp_switch = -1;
     snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_LEFT, &temp_switch);
     return temp_switch;
-}
-
-
-// TODO get profile struct as parameter
-/* Gets mixer front panels switch value (on/off).
- * Returns true for "on" and false for "off". */
-bool get_mixer_front_panel_switch()
-{
-    return is_mixer_elem_playback_switch_on(FRONT_PANEL.mixer_element);
 }
 
 
@@ -71,5 +63,3 @@ void list_mixer_elements(snd_mixer_t* handle)
         elem = snd_mixer_elem_next(elem);
     }
 }
-
-

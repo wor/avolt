@@ -1,10 +1,20 @@
 # Program version
 PROGRAM_NAME = avolt
-VERSION      = 0.4.2
+VERSION      = 0.4.3
 SRC_POSTFIX  = .c
 
 
 # Customize below to fit your system
+
+### Extra compile-time configuration options
+# -DUSE_SEMAPHORE=[true|false]
+#  Use semaphores to prevent synchronous volume setting. Synchronism can cause
+#  some undesirable effects with alsa.
+# -DSEMAPHORE_NAME=\"<name>\"
+#  Name for the semaphore to use, change if one with current name already
+#  exists, or is used by some other program.
+
+CONFIG_OPTS=-DUSE_SEMAPHORE=true -DSEMAPHORE_NAME=\"avolt\"
 
 
 # Install Paths
@@ -35,7 +45,7 @@ ifdef EFENCE
 endif
 
 # flags
-CPPFLAGS = -DVERSION=\"${VERSION}\" -D_POSIX_C_SOURCE=200112L
+CPPFLAGS = -DVERSION=\"${VERSION}\" -D_POSIX_C_SOURCE=200112L ${CONFIG_OPTS}
 CFLAGS   = -mtune=core2 -march=core2 -std=c99 -pedantic -Wall -O3 ${INCS} ${CPPFLAGS}
 LDFLAGS  = -ggdb ${LIBS}
 
