@@ -1,6 +1,6 @@
 # Program version
 PROGRAM_NAME = avolt
-VERSION      = 0.4.3
+VERSION      = 0.4.4
 SRC_POSTFIX  = .c
 
 
