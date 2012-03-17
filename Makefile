@@ -85,7 +85,7 @@ $(BUILDDIR)/%.o: %$(SRC_POSTFIX)
 .ONESHELL: info
 .PHONY: info
 info:
-	@echo -e ${WHITE_H}Building binary $(BUILDDIR)/$(BIN)${CLR_COLOR};
+	@echo -e ${WHITE_H}Building binary $(BUILDDIR)/$(BIN)${CLR_COLOR} v$(VERSION);
 	$(options_check)
 	$(used_options)
 
