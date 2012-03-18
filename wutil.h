@@ -14,4 +14,7 @@
 // Simple debug printer
 void pd(const char *fmt, ...);
 
+// Nanosecond sleeper
+int nsleep(int nanoseconds);
+
 #endif
