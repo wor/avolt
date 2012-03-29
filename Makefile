@@ -11,46 +11,58 @@ include config.mk
 # ###################################################################
 # Prepare build by creating needed dirs if they don't exist
 
-# create the dependency dir
+# Create the dependency dir
 ifeq ($(wildcard $(DEPDIR)/),)
 	__NULL  := $(shell mkdir -p ${DEPDIR})
 endif
 
-# create the build dir
+# Create the build dir
 ifeq ($(wildcard $(BUILDDIR)/),)
 	__NULL  := $(shell mkdir -p $(BUILDDIR))
 endif
 
-# some colors for the output
+# Some colors for the output
 WHITE_H     := "\033[1;37;40m"
 PURPLE_H    := "\033[1;35;40m"
 CLR_COLOR   := "\033[1;0m"
+
+_info       := $(DEPDIR)/.info
 
 # ###################################################################
 # Defined options, options handling code is in included makefile.
 # 	Option is enabled by existing environment variable by the same name (see
 # 	`make help`).
+# 	Options which start with `DEBUG_` or `D_` end up as passed to the program as
+# 	predefined macros (defines) with the compile `-D` flag.
+# 	Other options are intended to use with compilation configuration for example
+# 	inside this makefile.
 
-OPTIONS__BIN = "Binary file to create"
-OPTIONS__EFENCE = "Link against efence to ease memory debugging."
+# Makefile configuration options
+OPTIONS__BIN     = "Binary file to create"
+OPTIONS__EFENCE  = "Link against efence to ease memory debugging."
 OPTIONS__DESTDIR = "Install destination directory."
-OPTIONS__GCC = "Use gcc as a compiler (default is clang)."
+OPTIONS__GCC     = "Use gcc as a compiler (default is clang)."
 OPTIONS__DEBUG_AVOLT = "Enable debug printing."
-# Add a new option here..
 
 # ###################################################################
 # Compiler flags
 
 # Add debug options as -D flags to CXXFLAGS
-$(eval CPPFLAGS := $(CPPFLAGS) $(defined_debug_option_name_flags))
+$(eval CPPFLAGS := $(CPPFLAGS) $(defined_define_option_name_flags))
 
 # ###################################################################
 # Files
 
-# take all *$(SRC_POSTFIX) files from current dir, existing and generated
-SOURCES := $(wildcard *$(SRC_POSTFIX))
-OBJECTS = $(SOURCES:%$(SRC_POSTFIX)=$(BUILDDIR)/%.o)
+# Rake all *$(SRC_POSTFIX) files from the $(SRCDIR) dir, existing and generated
+SOURCES := $(wildcard $(SRCDIR)/*$(SRC_POSTFIX))
+SOURCES_WITHOUT_PATH := $(SOURCES:$(SRCDIR)/%=%)
+OBJECTS = $(SOURCES_WITHOUT_PATH:%$(SRC_POSTFIX)=$(BUILDDIR)/%.o)
 
+# For debug
+#$(info SOURCES:)
+#$(info $(SOURCES))
+#$(info OBJECTS:)
+#$(info $(OBJECTS))
 
 # ###################################################################
 # Targets and rules
@@ -58,44 +70,57 @@ OBJECTS = $(SOURCES:%$(SRC_POSTFIX)=$(BUILDDIR)/%.o)
 
 
 # Default target
+#all: $(if $(wildcard $(BUILDDIR)/$(BIN)),,info) $(BUILDDIR)/$(BIN)
 .PHONY: all
-all: $(if $(wildcard $(BUILDDIR)/$(BIN)),,info) $(BUILDDIR)/$(BIN)
+all: $(_info) $(BUILDDIR)/$(BIN)
 
-# link
+# Link
 $(BUILDDIR)/$(BIN): $(OBJECTS)
 	@echo -e ${WHITE_H}Linking to $@...${CLR_COLOR}
 	@$(LINKER) -o $(BUILDDIR)/$(BIN) $(LDFLAGS) $^
 
-# pull in dependency info for *existing* .o files
+config.mk:
+	$(error config.mk file is missing)
+
+# Pull in dependency info for *existing* .o files
 -include $(SOURCES:%$(SRC_POSTFIX)=$(DEPDIR)/%.d)
 
 
 ########### compile objects with some autodep magic
 
 
-$(BUILDDIR)/%.o: %$(SRC_POSTFIX)
+$(BUILDDIR)/%.o: $(SRCDIR)/%$(SRC_POSTFIX) config.mk
 	@echo -e ${PURPLE_H}Compiling $<...${CLR_COLOR}
-	@$(COMPILE$(SRC_POSTFIX)) -MMD -MP -MF $(DEPDIR)/$*.d $*$(SRC_POSTFIX) -o $(BUILDDIR)/$*.o
+	@$(COMPILE$(SRC_POSTFIX)) -MMD -MP -MF $(DEPDIR)/$*.d $(SRCDIR)/$*$(SRC_POSTFIX) -o $(BUILDDIR)/$*.o
 
 
 ########### Additional PHONY targets
 
 
 # Info target, provide info when compiling, not to be called
-.ONESHELL: info
-.PHONY: info
-info:
+.ONESHELL: $(_info)
+$(_info): config.mk
 	@echo -e ${WHITE_H}Building binary $(BUILDDIR)/$(BIN)${CLR_COLOR} v$(VERSION);
 	$(options_check)
 	$(used_options)
+	touch $(_info)
 
 # Let's be quite careful when cleaning (definitely no rm -rf :))
-.PHONY: clean
-clean:
+.PHONY: clean_build_dir
+clean_build_dir:
 	@rm -f -- $(BUILDDIR)/*.o $(BUILDDIR)/$(BIN) ${PROGRAM_NAME}-${VERSION}.tar.gz
 	@if [[ "${BUILDDIR}" != "." && "${BUILDDIR}" != "./" ]]; then rmdir -- $(BUILDDIR); fi;
+
+# Let's be quite careful when cleaning (definitely no rm -rf :))
+.PHONY: clean_dep_dir
+clean_dep_dir:
 	@rm -f -- $(DEPDIR)/*.d
+	@rm -f -- $(_info)
 	@rmdir -- $(DEPDIR)
+
+.PHONY: clean
+clean: clean_build_dir clean_dep_dir
+	@rm -f -- ${PROGRAM_NAME}-${VERSION}.tar.gz
 
 .PHONY: doc
 doxygen doc:
@@ -115,9 +140,9 @@ dist: clean
 .PHONY: install
 install: all
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
-	@mkdir -p ${DESTDIR}${PREFIX}/bin
-	@cp -f $(BUILDDIR)/${BIN} ${DESTDIR}${PREFIX}/bin
-	@chmod 755 ${DESTDIR}${PREFIX}/bin/${BIN}
+	@mkdir -p -- ${DESTDIR}${PREFIX}/bin
+	@cp -f -- $(BUILDDIR)/${BIN} ${DESTDIR}${PREFIX}/bin
+	@chmod 755 -- ${DESTDIR}${PREFIX}/bin/${BIN}
 	@# Man page installing
 	#@echo installing manual page to ${DESTDIR}${MANPREFIX}/man1
 	#@mkdir -p ${DESTDIR}${MANPREFIX}/man1
@@ -127,16 +152,16 @@ install: all
 .PHONY: uninstall
 uninstall:
 	@echo removing executable file from ${DESTDIR}${PREFIX}/bin
-	@rm -f ${DESTDIR}${PREFIX}/bin/${BIN}
+	@rm -f -- ${DESTDIR}${PREFIX}/bin/${BIN}
 	@# Man page uninstalling
 	#@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
-	#@rm -f ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
+	#@rm -f -- ${DESTDIR}${MANPREFIX}/man1/${BIN}.1
 
 .PHONY: help
 help:
 	@echo -e  "Environment variables to control the build:"
 	$(options)
-	@$(if $(defined_debug_option_names),echo; echo "These debug options are now defined: "; echo "$(defined_debug_option_names)")
+	@$(if $(defined_define_option_names),echo; echo "These debug options are now defined: "; echo "$(defined_define_option_names)")
 	@echo -e "\nTargets:"
 	@make -rpn | grep "^\.PHONY:" | sed 's/.PHONY: //'
 	@echo

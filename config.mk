@@ -1,6 +1,6 @@
 # Program version
 PROGRAM_NAME = avolt
-VERSION      = 0.4.4
+VERSION      = 0.4.4a
 SRC_POSTFIX  = .c
 
 
@@ -28,6 +28,8 @@ MANPREFIX = ${PREFIX}/share/man
 BIN        ?= $(PROGRAM_NAME)
 # default build dir
 BUILDDIR   := build
+# Source dir
+SRCDIR     := src
 # dir to store automatically generated dependency info files
 DEPDIR     := .deps
 
