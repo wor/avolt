@@ -2,9 +2,17 @@
 space=
 space+=
 option_names = $(sort $(subst OPTIONS__,,$(filter OPTIONS__%,$(.VARIABLES))))
-debug_option_names = $(filter DEBUG_%,$(option_names))
-defined_debug_option_names = $(filter $(debug_option_names),$(.VARIABLES))
-defined_debug_option_name_flags = $(foreach option,$(defined_debug_option_names),-D$(option))
+eq = $(filter $1,$2)
+
+# Option names which start with "DEBUG_" and "D_" end up as -D flag arguments
+define_option_names = $(filter DEBUG_%,$(option_names)) $(filter D_%,$(option_names))
+define_env_names = $(filter-out DEBUG_%,$(option_names)) $(filter D_%,$(option_names))
+
+defined_define_option_names = $(filter $(define_option_names),$(.VARIABLES))
+defined_env_option_names = $(strip $(foreach env,$(filter $(define_env_names),$(.VARIABLES)),$(if $(call eq,$(origin $(env)),environment),$(env),)))
+
+defined_define_option_name_flags = $(foreach option,$(defined_define_option_names),-D$(option))
+
 
 # Shell cmd generators for options
 options = $(foreach option,$(option_names),printf "%-20s %s\n" $(option) $(OPTIONS__$(option)); )

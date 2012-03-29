@@ -2,11 +2,12 @@
 # Author: Esa Määttä, 2011
 # ###################################################################
 
-# Include helper scripts for makefile environment options
-include Makefile_options
 
 # Include project specific make configuration
 include config.mk
+
+# Include helper scripts for makefile environment options
+include Makefile_options
 
 # ###################################################################
 # Prepare build by creating needed dirs if they don't exist
@@ -161,6 +162,7 @@ uninstall:
 help:
 	@echo -e  "Environment variables to control the build:"
 	$(options)
+	@$(if $(defined_env_option_names),echo; echo "These env options are now defined: "; echo "$(defined_env_option_names)")
 	@$(if $(defined_define_option_names),echo; echo "These debug options are now defined: "; echo "$(defined_define_option_names)")
 	@echo -e "\nTargets:"
 	@make -rpn | grep "^\.PHONY:" | sed 's/.PHONY: //'
