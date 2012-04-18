@@ -48,7 +48,7 @@ endif
 
 # flags
 CPPFLAGS = -DVERSION=\"${VERSION}\" -D_POSIX_C_SOURCE=200809L ${CONFIG_OPTS}
-CFLAGS   = -mtune=core2 -march=core2 -std=c99 -pedantic -Wall -O3 ${INCS} ${CPPFLAGS}
+CFLAGS   = -mtune=native -march=native -std=c99 -pedantic -Wall -O3 ${INCS} ${CPPFLAGS}
 LDFLAGS  = -ggdb ${LIBS}
 
 # Compiler and linker
