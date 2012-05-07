@@ -1,15 +1,16 @@
 /* © 2010-2011 Esa S. Määttä <esa maatta at iki fi>
  * See LICENSE file for license details. */
 
-/* "Simple" program to set/get/toggle alsa mixer element volume.
- *  (This program was once simple, it definitely isn't anymore.)
+/* Simple(*) program to set/get/toggle alsa mixer elements and volume.
+ *
+ *  (*This program was once simple, it definitely isn't anymore.)
  */
 
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
 #include <strings.h>
-#include <limits.h>   /* INT_MAX and so on */
+#include <limits.h>
 #include <stdbool.h>
 
 #include "avolt.conf.h"
@@ -46,7 +47,8 @@ int main(const int argc, const char* argv[])
     /* First we must determine witch profile is "on" */
     struct sound_profile* current_sp = get_current_sound_profile();
 
-    /* First do possible output profile change */
+    // TODO: Refactor as func (to alsa_utils module?)
+    /* First do the possible output profile change */
     if (cmd_opt.toggle_output) {
         PD_M("Toggling the output.\n");
 
@@ -99,6 +101,9 @@ int main(const int argc, const char* argv[])
                     VOLUME_TYPE);
             if (!ret) return 1;
 
+            // Sleep here to avoid volume spikes
+            nsleep(1000000);
+
             // If new_vol is relative we need to calculate new new_vol value
             if (cmd_opt.new_vol < 0 || cmd_opt.inc) {
                 cmd_opt.new_vol += current_vol;
@@ -140,7 +145,7 @@ int main(const int argc, const char* argv[])
                  current_sp->volume_cntrl_mixer_element == target_sp->volume_cntrl_mixer_element) ) return err;
     } // End of toggle_output
 
-    /* Second do possible volume change */
+    /* Second do the possible volume change */
     /* If new volume given or toggle volume, or set default volume */
     if (cmd_opt.new_vol != INT_MAX ||
             cmd_opt.toggle_vol ||
@@ -182,4 +187,3 @@ int main(const int argc, const char* argv[])
 
     return 0;
 }
-
