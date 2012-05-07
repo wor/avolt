@@ -1,0 +1,22 @@
+TODOS
+===========
+
+Program functionality
+---------------------
+
+- If large volume while frontpanel (headphones) on then switching to speakers
+  still can produce volume spike. Fix it! Also sleeping after rising volume to
+  org level might help. Check!
+- Save current volume and restore it if front panel toggling fails.
+- Now only master volume is set.
+
+Code cleanup
+------------
+
+- Add licence headers for all files, add LICENSE file.
+- Add documenetation, add README file.
+- Consider adding a man file.
+- Check const correctness.
+- Refactor: remove avolt.conf include from avolt.conf.c, include avolt.conf only
+  in main program file and only once.
+- Fix unused variable warnings
