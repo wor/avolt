@@ -5,6 +5,7 @@
 
 #include "avolt.conf.h"
 #include "alsa_utils.h"
+#include "wutil.h"
 
 /* Program configuration */
 #include "avolt.conf"
@@ -19,7 +20,7 @@ bool init_sound_profiles(snd_mixer_t* handle)
 {
     bool one_success = false;
     for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
-        //fprintf(stdout, "Initializing profile: %s\n", SOUND_PROFILES[i]->profile_name);
+        PD_M("Initializing profile: %s\n", SOUND_PROFILES[i]->profile_name);
         SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
         if (SOUND_PROFILES[i]->mixer_element) {
             SOUND_PROFILES[i]->init_ok = true;
@@ -37,7 +38,7 @@ bool init_sound_profiles(snd_mixer_t* handle)
 
         // Check if profile initialization was successful
         if (SOUND_PROFILES[i]->init_ok) {
-            //fprintf(stdout, "Initializing profile: '%s' ..successful\n", SOUND_PROFILES[i]->profile_name);
+            PD_M("Initializing profile: '%s' ..successful\n", SOUND_PROFILES[i]->profile_name);
             one_success = true;
         }
     }
