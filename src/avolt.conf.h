@@ -34,7 +34,7 @@ struct sound_profile
     bool confirm_exceeding_volume_limit;
 };
 
-void init_sound_profiles(snd_mixer_t* handle);
+bool init_sound_profiles(snd_mixer_t* handle);
 
 void print_config(FILE* output);
 

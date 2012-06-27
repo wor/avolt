@@ -25,6 +25,7 @@ snd_mixer_t* get_handle()
 /* Get mixer elem with given name from the handle */
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
+    assert(name);
     snd_mixer_elem_t* elem = NULL;
 
     /* get snd_mixer_elem_t pointer, corresponding DEFAULT.volume_cntrl_mixer_element_name */
@@ -37,7 +38,9 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
         var = snd_mixer_elem_next(var);
     }
 
-    assert(elem);
+    if (elem == NULL) {
+        fprintf(stderr, "Error: Could not get mixer element named: %s\n", name);
+    }
     return elem;
 }
 

@@ -42,7 +42,10 @@ int main(const int argc, const char* argv[])
 
     /* Create needed variables */
     snd_mixer_t* handle = get_handle();
-    init_sound_profiles(handle);
+    if (!init_sound_profiles(handle)) {
+        fprintf(stderr, "Error: sound profile initialization failed.\n");
+        return EXIT_FAILURE;
+    }
 
     /* First we must determine witch profile is "on" */
     struct sound_profile* current_sp = get_current_sound_profile();

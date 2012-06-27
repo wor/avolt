@@ -14,17 +14,22 @@ static const char *Volume_type_to_str[] = {"alsa percentage", "hardware percenta
      "hardware", "decibels"};
 
 /* Initializes all sound profiles from SOUND_PROFILES array */
-void init_sound_profiles(snd_mixer_t* handle)
+bool init_sound_profiles(snd_mixer_t* handle)
 {
     for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        //fprintf(stdout, "Initializing profile: %s\n", SOUND_PROFILES[i]->profile_name);
         SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
-        if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name)
+        if (SOUND_PROFILES[i]->mixer_element == NULL) return false;
+        if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name) {
             SOUND_PROFILES[i]->volume_cntrl_mixer_element = get_elem(handle, SOUND_PROFILES[i]->volume_cntrl_mixer_element_name);
+            if (SOUND_PROFILES[i]->volume_cntrl_mixer_element == NULL) return false;
+        }
         else {
             SOUND_PROFILES[i]->volume_cntrl_mixer_element_name = SOUND_PROFILES[i]->mixer_element_name;
             SOUND_PROFILES[i]->volume_cntrl_mixer_element = SOUND_PROFILES[i]->mixer_element;
         }
     }
+    return true;
 }
 
 
