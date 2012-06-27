@@ -22,7 +22,8 @@ snd_mixer_t* get_handle()
 }
 
 
-/* Get mixer elem with given name from the handle */
+/* Get mixer elem with given name from the handle.
+ * Returns NULL if element could not be got. */
 snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
 {
     assert(name);
@@ -39,7 +40,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
     }
 
     if (elem == NULL) {
-        fprintf(stderr, "Error: Could not get mixer element named: %s\n", name);
+        fprintf(stderr, "Warning: Could not get mixer element named: %s\n", name);
     }
     return elem;
 }

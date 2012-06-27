@@ -32,6 +32,8 @@ struct sound_profile
     int soft_limit_volume;
     bool set_default_volume;
     bool confirm_exceeding_volume_limit;
+
+    bool init_ok;
 };
 
 bool init_sound_profiles(snd_mixer_t* handle);

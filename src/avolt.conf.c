@@ -13,23 +13,36 @@
 static const char *Volume_type_to_str[] = {"alsa percentage", "hardware percentage",
      "hardware", "decibels"};
 
-/* Initializes all sound profiles from SOUND_PROFILES array */
+/* Initializes all sound profiles from SOUND_PROFILES array.
+ * Returns true if at least one profile was successfully initialized. */
 bool init_sound_profiles(snd_mixer_t* handle)
 {
+    bool one_success = false;
     for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
         //fprintf(stdout, "Initializing profile: %s\n", SOUND_PROFILES[i]->profile_name);
         SOUND_PROFILES[i]->mixer_element = get_elem(handle, SOUND_PROFILES[i]->mixer_element_name);
-        if (SOUND_PROFILES[i]->mixer_element == NULL) return false;
+        if (SOUND_PROFILES[i]->mixer_element) {
+            SOUND_PROFILES[i]->init_ok = true;
+        }
         if (SOUND_PROFILES[i]->volume_cntrl_mixer_element_name) {
             SOUND_PROFILES[i]->volume_cntrl_mixer_element = get_elem(handle, SOUND_PROFILES[i]->volume_cntrl_mixer_element_name);
-            if (SOUND_PROFILES[i]->volume_cntrl_mixer_element == NULL) return false;
+            if (SOUND_PROFILES[i]->volume_cntrl_mixer_element == NULL) {
+                SOUND_PROFILES[i]->init_ok = false;
+            }
         }
         else {
             SOUND_PROFILES[i]->volume_cntrl_mixer_element_name = SOUND_PROFILES[i]->mixer_element_name;
             SOUND_PROFILES[i]->volume_cntrl_mixer_element = SOUND_PROFILES[i]->mixer_element;
         }
+
+        // Check if profile initialization was successful
+        if (SOUND_PROFILES[i]->init_ok) {
+            //fprintf(stdout, "Initializing profile: '%s' ..successful\n", SOUND_PROFILES[i]->profile_name);
+            one_success = true;
+        }
     }
-    return true;
+
+    return one_success;
 }
 
 
@@ -90,11 +103,16 @@ void print_profile(
 }
 
 
-/* Get's current sound profile in use */
+/* Gets the current sound profile in use */
 struct sound_profile* get_current_sound_profile()
 {
     struct sound_profile* current = NULL;
     for (int i = 0; i < SOUND_PROFILES_SIZE; ++i) {
+        // Skip sound profiles which have not been successfully installed.
+        if (!SOUND_PROFILES[i]->init_ok) {
+            continue;
+        }
+
         snd_mixer_elem_t* e = SOUND_PROFILES[i]->mixer_element;
         if (snd_mixer_selem_has_playback_switch(e) &&
                 is_mixer_elem_playback_switch_on(e)) {

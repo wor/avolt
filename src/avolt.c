@@ -43,7 +43,7 @@ int main(const int argc, const char* argv[])
     /* Create needed variables */
     snd_mixer_t* handle = get_handle();
     if (!init_sound_profiles(handle)) {
-        fprintf(stderr, "Error: sound profile initialization failed.\n");
+        fprintf(stderr, "Error: no sound profiles could be initialized.\n");
         return EXIT_FAILURE;
     }
 
