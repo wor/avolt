@@ -4,6 +4,7 @@
 #include <strings.h>
 
 #include "alsa_utils.h"
+#include "wutil.h" // TODO: rename to util.h
 
 
 /* Get alsa handle */
@@ -40,7 +41,7 @@ snd_mixer_elem_t* get_elem(snd_mixer_t* handle, char const* name)
     }
 
     if (elem == NULL) {
-        fprintf(stderr, "Warning: Could not get mixer element named: %s\n", name);
+        PD_M("Warning: Could not get mixer element named: %s\n", name);
     }
     return elem;
 }
