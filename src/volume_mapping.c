@@ -32,7 +32,7 @@
 
 #define _ISOC99_SOURCE /* lrint() */
 #define _GNU_SOURCE /* exp10() */
-#include "aconfig.h"
+//#include "aconfig.h"
 #include <math.h>
 #include <stdbool.h>
 #include "volume_mapping.h"
