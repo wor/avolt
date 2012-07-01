@@ -150,5 +150,6 @@ struct sound_profile* get_target_sound_profile(struct sound_profile* current)
  * Returns true for "on" and false for "off". */
 bool get_mixer_front_panel_switch()
 {
-    return is_mixer_elem_playback_switch_on(FRONT_PANEL.mixer_element);
+    return FRONT_PANEL.init_ok ?
+        is_mixer_elem_playback_switch_on(FRONT_PANEL.mixer_element) : false;
 }
