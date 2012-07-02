@@ -1,6 +1,6 @@
 avolt
 =====
 
-Simple command line tool to change (alsa) volume. Can also switch between active
+Simple command line tool to change (ALSA) volume. Can also switch between active
 mixer elements. For example between Master and Front Panel elements if sound
 card has support for this.
