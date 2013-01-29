@@ -90,7 +90,7 @@ config.mk:
 ########### compile objects with some autodep magic
 
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%$(SRC_POSTFIX) config.mk
+$(BUILDDIR)/%.o: $(SRCDIR)/%$(SRC_POSTFIX) config.mk src/avolt.conf
 	@echo -e ${PURPLE_H}Compiling $<...${CLR_COLOR}
 	@$(COMPILE$(SRC_POSTFIX)) -MMD -MP -MF $(DEPDIR)/$*.d $(SRCDIR)/$*$(SRC_POSTFIX) -o $(BUILDDIR)/$*.o
 
