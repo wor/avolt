@@ -7,6 +7,10 @@
 #include "wutil.h" // TODO: rename to util.h
 
 
+/* Alsa api documentation:
+ * http://www.alsa-project.org/alsa-doc/alsa-lib/group___mixer.html
+ */
+
 /* Get alsa handle */
 snd_mixer_t* get_handle()
 {
@@ -15,6 +19,7 @@ snd_mixer_t* get_handle()
     int ret_val = snd_mixer_open(&handle, 0);
     assert(ret_val >= 0);
 
+    /* Bind mixer handle to the default device */
     snd_mixer_attach(handle, "default");
     snd_mixer_selem_register(handle, NULL, NULL);
     snd_mixer_load(handle);
